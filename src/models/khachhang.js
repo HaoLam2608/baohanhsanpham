@@ -2,8 +2,9 @@ const mongoose = require('mongoose');
 
 const KhachHangSchema = new mongoose.Schema({
     hoTen: { type: String, required: true },
-    soDienThoai: { type: String, required: true, unique: true },
-    email: { type: String },
+    email: { type: String, required: true, unique: true },
+    matKhau: { type: String }, // Cho phép khách hàng đăng nhập
+    soDienThoai: { type: String },
     diaChi: { type: String },
     ngayTao: { type: Date, default: Date.now },
 });

@@ -39,10 +39,23 @@ exports.getWarrantyInfo = async (req, res) => {
 // Theo dõi trạng thái phiếu bảo hành
 exports.trackWarrantyTicket = async (req, res) => {
     try {
-        const ticket = await PhieuBaoHanh.findById(req.params.ticketId)
-            .populate('sanPhamId')
-            .populate('khachHangId')
-            .populate('nhanVienTiepNhanId');
+        const { ticketId } = req.params;
+        
+        // Tìm theo maPhieu hoặc _id
+        let ticket;
+        if (ticketId.startsWith('BH')) {
+            // Nếu bắt đầu bằng BH thì là mã phiếu
+            ticket = await PhieuBaoHanh.findOne({ maPhieu: ticketId })
+                .populate('sanPhamId')
+                .populate('khachHangId')
+                .populate('nhanVienTiepNhanId');
+        } else {
+            // Nếu không thì coi như là ObjectId
+            ticket = await PhieuBaoHanh.findById(ticketId)
+                .populate('sanPhamId')
+                .populate('khachHangId')
+                .populate('nhanVienTiepNhanId');
+        }
 
         if (!ticket) return res.status(404).json({ message: 'Phiếu bảo hành không tồn tại' });
 
@@ -50,12 +63,18 @@ exports.trackWarrantyTicket = async (req, res) => {
             maPhieu: ticket.maPhieu,
             trangThai: ticket.trangThai,
             sanPham: ticket.sanPhamId,
+            khachHang: ticket.khachHangId,
+            nhanVien: ticket.nhanVienTiepNhanId,
             ngayTiepNhan: ticket.ngayTiepNhan,
             ngayHoanTat: ticket.ngayHoanTat,
             moTaLoi: ticket.moTaLoi,
-            lichSuTrangThai: ticket.lichSuTrangThai
+            loaiLoiDuDoan: ticket.loaiLoiDuDoan,
+            lichSuTrangThai: ticket.lichSuTrangThai,
+            qualityRating: ticket.qualityRating,
+            qualityComments: ticket.qualityComments
         });
     } catch (err) {
+        console.error('❌ Error tracking ticket:', err);
         res.status(500).json({ message: 'Lỗi server', error: err.message });
     }
 };

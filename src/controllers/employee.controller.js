@@ -1,4 +1,3 @@
-const ChiTietBaoHanh = require('../models/chitietbaohang');
 const PhieuBaoHanh = require('../models/phieubaohanh');
 const SanPham = require('../models/sanpham');
 
@@ -30,37 +29,46 @@ exports.getMyTasks = async (req, res) => {
 exports.inspectProduct = async (req, res) => {
     try {
         const { ticketId } = req.params;
-        const { ketQuaKiemTra, loaiLoiDuDoan } = req.body;
+        const { ketQuaKiemTra, loaiLoiDuDoan, moTaKiemTra, canThayThe, linhKienCanThay } = req.body;
 
         const ticket = await PhieuBaoHanh.findById(ticketId);
         if (!ticket) return res.status(404).json({ message: 'Phiếu không tồn tại' });
 
+        // Cập nhật trạng thái và thông tin kiểm tra
         ticket.trangThai = 'dang_sua';
         ticket.loaiLoiDuDoan = loaiLoiDuDoan;
+        ticket.ketQuaKiemTra = moTaKiemTra || ketQuaKiemTra;
+        ticket.ngayBatDauXuLy = new Date();
 
+        // Thêm vào lịch sử
         ticket.lichSuTrangThai.push({
             trangThai: 'dang_kiem_tra',
             thoiGian: new Date(),
-            nhanVienId: req.user.id
+            nhanVienId: req.user.id,
+            ghiChu: 'Bắt đầu kiểm tra sản phẩm'
         });
+
+        ticket.lichSuTrangThai.push({
+            trangThai: 'dang_sua',
+            thoiGian: new Date(),
+            nhanVienId: req.user.id,
+            ghiChu: moTaKiemTra || ketQuaKiemTra
+        });
+
+        // Nếu cần thay thế linh kiện
+        if (canThayThe && linhKienCanThay) {
+            ticket.moTaTienDo.push({
+                noiDung: `Cần thay thế: ${linhKienCanThay}`,
+                thoiGian: new Date(),
+                nhanVienId: req.user.id
+            });
+        }
 
         await ticket.save();
 
-        // Tạo bản ghi chi tiết sửa chữa
-        const detail = new ChiTietBaoHanh({
-            phieuBaoHanhId: ticketId,
-            nhanVienId: req.user.id,
-            ketQuaKiemTra,
-            moTaXuLy: '',
-            ngayBatDau: new Date(),
-            trangThai: 'dang_sua'
-        });
-
-        await detail.save();
-
         res.json({
-            message: 'Kiểm tra hàng thành công',
-            data: { ticket, detail }
+            message: 'Kiểm tra sản phẩm thành công',
+            data: ticket
         });
     } catch (err) {
         res.status(500).json({ message: 'Lỗi server', error: err.message });
@@ -70,22 +78,22 @@ exports.inspectProduct = async (req, res) => {
 // Cập nhật tiến độ sửa chữa
 exports.updateRepairProgress = async (req, res) => {
     try {
-        const { detailId } = req.params;
-        const { moTaXuLy, linhKienThayThe, trangThai } = req.body;
+        const { ticketId } = req.params;
+        const { moTaTienDo } = req.body;
 
-        const detail = await ChiTietBaoHanh.findByIdAndUpdate(
-            detailId,
-            {
-                moTaXuLy,
-                linhKienThayThe,
-                trangThai: trangThai || 'dang_sua'
-            },
-            { new: true }
-        ).populate('phieuBaoHanhId');
+        const ticket = await PhieuBaoHanh.findById(ticketId);
+        if (!ticket) return res.status(404).json({ message: 'Phiếu không tồn tại' });
 
-        if (!detail) return res.status(404).json({ message: 'Chi tiết không tồn tại' });
+        // Thêm tiến độ mới
+        ticket.moTaTienDo.push({
+            noiDung: moTaTienDo,
+            thoiGian: new Date(),
+            nhanVienId: req.user.id
+        });
 
-        res.json({ message: 'Cập nhật tiến độ thành công', data: detail });
+        await ticket.save();
+
+        res.json({ message: 'Cập nhật tiến độ thành công', data: ticket });
     } catch (err) {
         res.status(500).json({ message: 'Lỗi server', error: err.message });
     }
@@ -95,45 +103,31 @@ exports.updateRepairProgress = async (req, res) => {
 exports.completeRepair = async (req, res) => {
     try {
         const { ticketId } = req.params;
-        const { ketQuaKiemTra, moTaXuLy, linhKienThayThe } = req.body;
+        const { moTaXuLy, linhKienThayThe, chiPhiPhatSinh, ghiChu } = req.body;
 
         const ticket = await PhieuBaoHanh.findById(ticketId);
         if (!ticket) return res.status(404).json({ message: 'Phiếu không tồn tại' });
 
-        // Cập nhật hoặc tạo chi tiết sửa chữa
-        let detail = await ChiTietBaoHanh.findOne({ phieuBaoHanhId: ticketId });
-
-        if (!detail) {
-            detail = new ChiTietBaoHanh({
-                phieuBaoHanhId: ticketId,
-                nhanVienId: req.user.id,
-                ngayBatDau: new Date()
-            });
-        }
-
-        detail.moTaXuLy = moTaXuLy;
-        detail.ketQuaKiemTra = ketQuaKiemTra;
-        detail.linhKienThayThe = linhKienThayThe;
-        detail.ngayHoanTat = new Date();
-        detail.trangThai = 'hoan_tat';
-
-        await detail.save();
-
-        // Cập nhật trạng thái phiếu
+        // Cập nhật thông tin hoàn tất
+        ticket.moTaXuLy = moTaXuLy;
+        ticket.linhKienThayThe = linhKienThayThe || [];
+        ticket.chiPhiPhatSinh = chiPhiPhatSinh || 0;
         ticket.trangThai = 'hoan_tat';
         ticket.ngayHoanTat = new Date();
 
+        // Thêm vào lịch sử
         ticket.lichSuTrangThai.push({
             trangThai: 'hoan_tat',
             thoiGian: new Date(),
-            nhanVienId: req.user.id
+            nhanVienId: req.user.id,
+            ghiChu: ghiChu || 'Hoàn tất sửa chữa'
         });
 
         await ticket.save();
 
         res.json({
             message: 'Hoàn tất sửa chữa thành công',
-            data: { ticket, detail }
+            data: ticket
         });
     } catch (err) {
         res.status(500).json({ message: 'Lỗi server', error: err.message });
@@ -145,22 +139,23 @@ exports.getCompletedWork = async (req, res) => {
     try {
         const employeeId = req.user.id;
 
-        const details = await ChiTietBaoHanh.find({ nhanVienId: employeeId, trangThai: 'hoan_tat' })
-            .populate({
-                path: 'phieuBaoHanhId',
-                populate: ['sanPhamId', 'khachHangId']
-            })
+        const tickets = await PhieuBaoHanh.find({ 
+            nhanVienTiepNhanId: employeeId, 
+            trangThai: 'hoan_tat' 
+        })
+            .populate('sanPhamId')
+            .populate('khachHangId')
             .sort({ ngayHoanTat: -1 });
 
         const stats = {
-            totalCompleted: details.length,
-            totalPartsReplaced: details.reduce((sum, d) => sum + (d.linhKienThayThe?.length || 0), 0),
-            totalRepairCost: details.reduce((sum, d) =>
-                sum + (d.linhKienThayThe?.reduce((s, p) => s + (p.chiPhi || 0), 0) || 0), 0
+            totalCompleted: tickets.length,
+            totalPartsReplaced: tickets.reduce((sum, t) => sum + (t.linhKienThayThe?.length || 0), 0),
+            totalRepairCost: tickets.reduce((sum, t) => 
+                sum + (t.linhKienThayThe?.reduce((s, p) => s + (p.chiPhi || 0), 0) || 0) + (t.chiPhiPhatSinh || 0), 0
             )
         };
 
-        res.json({ stats, details });
+        res.json({ stats, tickets });
     } catch (err) {
         res.status(500).json({ message: 'Lỗi server', error: err.message });
     }
@@ -170,18 +165,20 @@ exports.getCompletedWork = async (req, res) => {
 exports.markUnableToRepair = async (req, res) => {
     try {
         const { ticketId } = req.params;
-        const { reason } = req.body;
+        const { lyDoKhongSua } = req.body;
 
         const ticket = await PhieuBaoHanh.findById(ticketId);
         if (!ticket) return res.status(404).json({ message: 'Phiếu không tồn tại' });
 
         ticket.trangThai = 'tu_choi';
-        ticket.moTaLoi += `\n[Không thể sửa: ${reason}]`;
+        ticket.moTaXuLy = lyDoKhongSua;
+        ticket.ngayHoanTat = new Date();
 
         ticket.lichSuTrangThai.push({
             trangThai: 'tu_choi',
             thoiGian: new Date(),
-            nhanVienId: req.user.id
+            nhanVienId: req.user.id,
+            ghiChu: lyDoKhongSua
         });
 
         await ticket.save();
@@ -190,6 +187,35 @@ exports.markUnableToRepair = async (req, res) => {
             message: 'Đánh dấu không thể sửa thành công',
             data: ticket
         });
+    } catch (err) {
+        res.status(500).json({ message: 'Lỗi server', error: err.message });
+    }
+};
+
+// Upload hình ảnh trong quá trình sửa
+exports.uploadRepairImages = async (req, res) => {
+    try {
+        const { ticketId } = req.params;
+        const { hinhAnhSua } = req.body;
+
+        const ticket = await PhieuBaoHanh.findById(ticketId);
+        if (!ticket) return res.status(404).json({ message: 'Phiếu không tồn tại' });
+
+        // Thêm hình ảnh vào mảng
+        if (hinhAnhSua && Array.isArray(hinhAnhSua)) {
+            ticket.hinhAnhSua = [...(ticket.hinhAnhSua || []), ...hinhAnhSua];
+        }
+
+        // Thêm ghi chú vào tiến độ
+        ticket.moTaTienDo.push({
+            noiDung: `Đã tải lên ${hinhAnhSua.length} hình ảnh`,
+            thoiGian: new Date(),
+            nhanVienId: req.user.id
+        });
+
+        await ticket.save();
+
+        res.json({ message: 'Upload hình ảnh thành công', data: ticket });
     } catch (err) {
         res.status(500).json({ message: 'Lỗi server', error: err.message });
     }

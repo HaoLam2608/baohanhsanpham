@@ -1,5 +1,4 @@
 const PhieuBaoHanh = require('../models/phieubaohanh');
-const ChiTietBaoHanh = require('../models/chitietbaohang');
 const SanPham = require('../models/sanpham');
 const NhanVien = require('../models/nhanvien');
 const KhachHang = require('../models/khachhang');
@@ -34,9 +33,37 @@ exports.getDashboardStats = async (req, res) => {
             recentTickets: await PhieuBaoHanh.find()
                 .populate('sanPhamId')
                 .populate('khachHangId')
+                .populate('nhanVienTiepNhanId')
                 .limit(5)
                 .sort({ ngayTiepNhan: -1 })
         });
+    } catch (err) {
+        res.status(500).json({ message: 'Lỗi server', error: err.message });
+    }
+};
+
+// Lấy tất cả phiếu bảo hành
+exports.getAllTickets = async (req, res) => {
+    try {
+        const { status, employee, startDate, endDate } = req.query;
+        const query = {};
+
+        if (status) query.trangThai = status;
+        if (employee) query.nhanVienTiepNhanId = employee;
+        if (startDate && endDate) {
+            query.ngayTiepNhan = {
+                $gte: new Date(startDate),
+                $lte: new Date(endDate)
+            };
+        }
+
+        const tickets = await PhieuBaoHanh.find(query)
+            .populate('sanPhamId')
+            .populate('khachHangId')
+            .populate('nhanVienTiepNhanId')
+            .sort({ ngayTiepNhan: -1 });
+
+        res.json({ tickets, total: tickets.length });
     } catch (err) {
         res.status(500).json({ message: 'Lỗi server', error: err.message });
     }
@@ -79,16 +106,14 @@ exports.getDetailedReport = async (req, res) => {
             report.byProduct[productName] = (report.byProduct[productName] || 0) + 1;
 
             // Đếm theo nhân viên
-            const employeeName = ticket.nhanVienTiepNhanId?.hoTen || 'Unknown';
+            const employeeName = ticket.nhanVienTiepNhanId?.hoTen || 'Chưa gán';
             report.byEmployee[employeeName] = (report.byEmployee[employeeName] || 0) + 1;
 
-            // Lấy chi phí sửa chữa
-            const details = await ChiTietBaoHanh.find({ phieuBaoHanhId: ticket._id });
-            for (const detail of details) {
-                if (detail.linhKienThayThe) {
-                    report.totalRepairCost += detail.linhKienThayThe.reduce((sum, part) => sum + (part.chiPhi || 0), 0);
-                }
+            // Tính tổng chi phí từ linhKienThayThe và chiPhiPhatSinh
+            if (ticket.linhKienThayThe && ticket.linhKienThayThe.length > 0) {
+                report.totalRepairCost += ticket.linhKienThayThe.reduce((sum, part) => sum + (part.chiPhi || 0), 0);
             }
+            report.totalRepairCost += ticket.chiPhiPhatSinh || 0;
         }
 
         res.json(report);
@@ -131,17 +156,39 @@ exports.approveTicket = async (req, res) => {
 exports.assignEmployee = async (req, res) => {
     try {
         const { ticketId } = req.params;
-        const { employeeId } = req.body;
+        const { nhanVienId } = req.body;
 
-        const ticket = await PhieuBaoHanh.findByIdAndUpdate(
-            ticketId,
-            { nhanVienTiepNhanId: employeeId },
-            { new: true }
-        ).populate('nhanVienTiepNhanId');
+        // Kiểm tra nhân viên tồn tại
+        const employee = await NhanVien.findById(nhanVienId);
+        if (!employee) {
+            return res.status(404).json({ message: 'Nhân viên không tồn tại' });
+        }
 
-        if (!ticket) return res.status(404).json({ message: 'Phiếu không tồn tại' });
+        const ticket = await PhieuBaoHanh.findById(ticketId);
+        if (!ticket) {
+            return res.status(404).json({ message: 'Phiếu không tồn tại' });
+        }
 
-        res.json({ message: 'Gán nhân viên thành công', data: ticket });
+        // Cập nhật nhân viên
+        ticket.nhanVienTiepNhanId = nhanVienId;
+
+        // Thêm vào lịch sử
+        ticket.lichSuTrangThai.push({
+            trangThai: ticket.trangThai,
+            thoiGian: new Date(),
+            nhanVienId: req.user.id,
+            ghiChu: `Gán cho nhân viên: ${employee.hoTen}`
+        });
+
+        await ticket.save();
+
+        // Populate lại để trả về đầy đủ thông tin
+        await ticket.populate('nhanVienTiepNhanId');
+
+        res.json({ 
+            message: `Đã gán phiếu cho nhân viên ${employee.hoTen}`, 
+            data: ticket 
+        });
     } catch (err) {
         res.status(500).json({ message: 'Lỗi server', error: err.message });
     }
