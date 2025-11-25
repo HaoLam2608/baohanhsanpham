@@ -14,13 +14,27 @@ export default function ManagerPage({ onLogout }) {
   const [employees, setEmployees] = useState([])
   const [customers, setCustomers] = useState([])
   const [tickets, setTickets] = useState([])
+  const [showCustomerModal, setShowCustomerModal] = useState(false)
+  const [selectedCustomer, setSelectedCustomer] = useState(null)
+  const [customerProducts, setCustomerProducts] = useState([])
+  const [customerTickets, setCustomerTickets] = useState([])
+  const [customerReviews, setCustomerReviews] = useState([])
+  const [customerAvgRating, setCustomerAvgRating] = useState(null)
+  const [customerRatingCounts, setCustomerRatingCounts] = useState([0,0,0,0,0])
   
   // State cho modal
   const [showProductModal, setShowProductModal] = useState(false)
   const [showEmployeeModal, setShowEmployeeModal] = useState(false)
+  const [editingEmployee, setEditingEmployee] = useState(null)
   const [showAssignModal, setShowAssignModal] = useState(false)
   const [editingProduct, setEditingProduct] = useState(null)
   const [selectedTicket, setSelectedTicket] = useState(null)
+  const [showTicketDetail, setShowTicketDetail] = useState(false)
+  const [selectedTicketDetail, setSelectedTicketDetail] = useState(null)
+
+  // State cho modal chi tiết sản phẩm
+  const [showProductDetailModal, setShowProductDetailModal] = useState(false)
+  const [selectedProductDetail, setSelectedProductDetail] = useState(null)
   
   // Form data
   const [productForm, setProductForm] = useState({
@@ -30,7 +44,7 @@ export default function ManagerPage({ onLogout }) {
     soSerial: '',
     ngayMua: '',
     thoiHanBaoHanhThang: 12,
-    thongTinKyThuat: '',
+    thongTinKyThuat: {},
     khachHangId: ''
   })
   
@@ -40,6 +54,15 @@ export default function ManagerPage({ onLogout }) {
     matKhau: '',
     chucVu: 'nhanvien'
   })
+
+  // Filter and search states
+  const [ticketSearch, setTicketSearch] = useState('')
+  const [ticketStatusFilter, setTicketStatusFilter] = useState('all')
+  const [productSearch, setProductSearch] = useState('')
+  const [productTypeFilter, setProductTypeFilter] = useState('all')
+  const [employeeSearch, setEmployeeSearch] = useState('')
+  const [employeeRoleFilter, setEmployeeRoleFilter] = useState('all')
+  const [customerSearch, setCustomerSearch] = useState('')
 
   // Load data khi tab thay đổi
   useEffect(() => {
@@ -57,6 +80,10 @@ export default function ManagerPage({ onLogout }) {
         break
       case 'employees':
         await loadEmployees()
+        break
+      case 'customers':
+        await loadCustomers()
+        await loadTickets()
         break
       case 'tickets':
         await loadTickets()
@@ -124,6 +151,38 @@ export default function ManagerPage({ onLogout }) {
     }
   }
 
+  const openCustomerModal = async (customer) => {
+    try {
+      setSelectedCustomer(customer)
+      setShowCustomerModal(true)
+      // Load products for this customer
+      const allProducts = await generalAPI.getProducts()
+      const owned = (allProducts || []).filter(p => p.khachHangId === customer._id || (p.khachHangId && p.khachHangId._id === customer._id))
+      setCustomerProducts(owned)
+      // Load tickets for this customer
+      const allTickets = await generalAPI.getWarrantyTickets()
+      const custTickets = (allTickets?.data || allTickets || []).filter(t => t.khachHangId?._id === customer._id || t.khachHangId === customer._id)
+      setCustomerTickets(custTickets)
+      // compute reviews
+      const reviews = custTickets.filter(t => t.qualityRating && t.qualityRating > 0)
+      setCustomerReviews(reviews)
+      if (reviews.length > 0) {
+        const avg = (reviews.reduce((sum, r) => sum + (r.qualityRating || 0), 0) / reviews.length).toFixed(1)
+        setCustomerAvgRating(avg)
+        const counts = [0,0,0,0,0]
+        reviews.forEach(r => { if (r.qualityRating) counts[r.qualityRating - 1]++ })
+        setCustomerRatingCounts(counts)
+      } else {
+        setCustomerAvgRating(null)
+        setCustomerRatingCounts([0,0,0,0,0])
+      }
+    } catch (err) {
+      console.error('Error opening customer modal:', err)
+      setCustomerProducts([])
+      setCustomerTickets([])
+    }
+  }
+
   const loadTickets = async () => {
     try {
       setLoading(true)
@@ -135,6 +194,54 @@ export default function ManagerPage({ onLogout }) {
     } finally {
       setLoading(false)
     }
+  }
+
+  // Filter functions
+  const getFilteredTickets = () => {
+    return tickets.filter(ticket => {
+      const matchesSearch = !ticketSearch || 
+        ticket.maPhieu?.toLowerCase().includes(ticketSearch.toLowerCase()) ||
+        ticket.sanPhamId?.tenSP?.toLowerCase().includes(ticketSearch.toLowerCase()) ||
+        ticket.khachHangId?.hoTen?.toLowerCase().includes(ticketSearch.toLowerCase())
+      
+      const matchesStatus = ticketStatusFilter === 'all' || ticket.trangThai === ticketStatusFilter
+      
+      return matchesSearch && matchesStatus
+    })
+  }
+
+  const getFilteredProducts = () => {
+    return products.filter(product => {
+      const matchesSearch = !productSearch ||
+        product.tenSP?.toLowerCase().includes(productSearch.toLowerCase()) ||
+        product.soSerial?.toLowerCase().includes(productSearch.toLowerCase()) ||
+        product.thuongHieu?.toLowerCase().includes(productSearch.toLowerCase())
+      
+      const matchesType = productTypeFilter === 'all' || product.loaiSanPham === productTypeFilter
+      
+      return matchesSearch && matchesType
+    })
+  }
+
+  const getFilteredEmployees = () => {
+    return employees.filter(employee => {
+      const matchesSearch = !employeeSearch ||
+        employee.hoTen?.toLowerCase().includes(employeeSearch.toLowerCase()) ||
+        employee.email?.toLowerCase().includes(employeeSearch.toLowerCase())
+      
+      const matchesRole = employeeRoleFilter === 'all' || employee.chucVu === employeeRoleFilter
+      
+      return matchesSearch && matchesRole
+    })
+  }
+
+  const getFilteredCustomers = () => {
+    return customers.filter(customer => {
+      return !customerSearch ||
+        customer.hoTen?.toLowerCase().includes(customerSearch.toLowerCase()) ||
+        customer.email?.toLowerCase().includes(customerSearch.toLowerCase()) ||
+        customer.soDienThoai?.toLowerCase().includes(customerSearch.toLowerCase())
+    })
   }
 
   // Gán nhân viên
@@ -222,7 +329,7 @@ export default function ManagerPage({ onLogout }) {
         soSerial: product.soSerial,
         ngayMua: product.ngayMua ? new Date(product.ngayMua).toISOString().split('T')[0] : '',
         thoiHanBaoHanhThang: product.thoiHanBaoHanhThang,
-        thongTinKyThuat: JSON.stringify(product.thongTinKyThuat || {}),
+        thongTinKyThuat: product.thongTinKyThuat || {},
         khachHangId: product.khachHangId || ''
       })
     }
@@ -237,7 +344,7 @@ export default function ManagerPage({ onLogout }) {
       soSerial: '',
       ngayMua: '',
       thoiHanBaoHanhThang: 12,
-      thongTinKyThuat: '',
+      thongTinKyThuat: {},
       khachHangId: ''
     })
   }
@@ -284,6 +391,47 @@ export default function ManagerPage({ onLogout }) {
       if (!response.ok) throw new Error('Xóa nhân viên thất bại')
       
       setSuccess('Xóa nhân viên thành công!')
+      loadEmployees()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleEditEmployee = (emp) => {
+    setEditingEmployee(emp)
+    setEmployeeForm({
+      hoTen: emp.hoTen || '',
+      email: emp.email || '',
+      matKhau: '',
+      chucVu: emp.chucVu || 'nhanvien'
+    })
+    setShowEmployeeModal(true)
+  }
+
+  const handleUpdateEmployee = async (e) => {
+    e.preventDefault()
+    if (!editingEmployee) return
+    try {
+      setLoading(true)
+      const payload = { ...employeeForm }
+      if (!payload.matKhau) delete payload.matKhau
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/nhanvien/${editingEmployee._id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(payload)
+      })
+
+      if (!response.ok) throw new Error('Cập nhật nhân viên thất bại')
+
+      setSuccess('Cập nhật nhân viên thành công!')
+      setShowEmployeeModal(false)
+      setEditingEmployee(null)
+      resetEmployeeForm()
       loadEmployees()
     } catch (err) {
       setError(err.message)
@@ -357,6 +505,13 @@ export default function ManagerPage({ onLogout }) {
           <span className="tab-icon">👥</span>
           <span>Nhân viên</span>
         </button>
+        <button
+          className={`nav-tab ${activeTab === 'customers' ? 'active' : ''}`}
+          onClick={() => setActiveTab('customers')}
+        >
+          <span className="tab-icon">👤</span>
+          <span>Khách hàng</span>
+        </button>
       </nav>
 
       {/* Messages */}
@@ -364,6 +519,223 @@ export default function ManagerPage({ onLogout }) {
         <div className="alert alert-error">
           <span>❌</span> {error}
           <button onClick={() => setError('')}>×</button>
+        </div>
+      )}
+
+      {/* Customer Detail Modal */}
+      {showCustomerModal && selectedCustomer && (
+        <div className="modal-overlay" onClick={() => { setShowCustomerModal(false); setSelectedCustomer(null); }}>
+          <div className="modal-content modal-large" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header-customer-modern">
+              <div className="customer-header-top">
+                <div className="customer-avatar-large">{selectedCustomer.hoTen ? selectedCustomer.hoTen.split(' ').map(n => n[0]).slice(0,2).join('') : 'KH'}</div>
+                <div className="customer-header-info">
+                  <div className="customer-name">{selectedCustomer.hoTen}</div>
+                  <div className="customer-email">📧 {selectedCustomer.email}</div>
+                  {selectedCustomer.soDienThoai && (
+                    <div className="customer-phone">📞 {selectedCustomer.soDienThoai}</div>
+                  )}
+                </div>
+                <button className="modal-close-modern" onClick={() => { setShowCustomerModal(false); setSelectedCustomer(null); }}>✕</button>
+              </div>
+              <div className="customer-header-bottom">
+                <div className="header-rating-badge">
+                  {customerAvgRating ? (
+                    <>
+                      <span className="rating-number">{customerAvgRating}</span>
+                      <div className="rating-stars-inline">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <span key={i} className={i < Math.round(customerAvgRating) ? 'star active' : 'star'}>★</span>
+                        ))}
+                      </div>
+                      <span className="rating-count">({customerReviews.length} đánh giá)</span>
+                    </>
+                  ) : (
+                    <span className="no-rating-text">Chưa có đánh giá</span>
+                  )}
+                </div>
+                <div className="header-actions-modern">
+                  <button className="action-btn" onClick={() => { if (selectedCustomer.soDienThoai) { window.open(`tel:${selectedCustomer.soDienThoai}`); } else { alert('Không có số điện thoại'); } }}>
+                    <span className="btn-icon">📞</span>
+                    <span>Gọi</span>
+                  </button>
+                  <button className="action-btn" onClick={() => { if (selectedCustomer.email) { window.open(`mailto:${selectedCustomer.email}`); } else { alert('Không có email'); } }}>
+                    <span className="btn-icon">✉️</span>
+                    <span>Email</span>
+                  </button>
+                  <button className="action-btn" onClick={() => alert('Chức năng sửa khách hàng chưa được cài đặt')}>
+                    <span className="btn-icon">✏️</span>
+                    <span>Sửa</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-body-customer">
+              <div className="customer-detail-grid-modern">
+                <div className="left-column">
+                  <div className="section-card info-card-compact">
+                    <div className="card-header">
+                      <span className="card-icon">👤</span>
+                      <h4>Thông tin cơ bản</h4>
+                    </div>
+                    <div className="card-body">
+                      <div className="info-grid">
+                        <div className="info-item-compact">
+                          <span className="info-label">Họ tên</span>
+                          <span className="info-value">{selectedCustomer.hoTen}</span>
+                        </div>
+                        <div className="info-item-compact">
+                          <span className="info-label">Email</span>
+                          <span className="info-value">{selectedCustomer.email}</span>
+                        </div>
+                        <div className="info-item-compact">
+                          <span className="info-label">Số điện thoại</span>
+                          <span className="info-value">{selectedCustomer.soDienThoai || 'Chưa cập nhật'}</span>
+                        </div>
+                        <div className="info-item-compact">
+                          <span className="info-label">Địa chỉ</span>
+                          <span className="info-value">{selectedCustomer.diaChi || 'Chưa cập nhật'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="section-card reviews-card-main">
+                    <div className="card-header">
+                      <span className="card-icon">⭐</span>
+                      <h4>Đánh giá ({customerReviews.length})</h4>
+                    </div>
+                    <div className="card-body">
+                      <div className="rating-summary-modern">
+                        {customerAvgRating ? (
+                          <div className="rating-overview">
+                            <div className="rating-score">
+                              <div className="score-number">{customerAvgRating}</div>
+                              <div className="score-stars">
+                                {Array.from({ length: 5 }).map((_, i) => (
+                                  <span key={i} className={i < Math.round(customerAvgRating) ? 'star active' : 'star'}>★</span>
+                                ))}
+                              </div>
+                              <div className="score-text">{customerReviews.length} đánh giá</div>
+                            </div>
+                            <div className="rating-bars">
+                              {customerRatingCounts.slice().reverse().map((count, idx) => (
+                                <div key={idx} className="rating-bar-row">
+                                  <span className="bar-label">{5 - idx}★</span>
+                                  <div className="bar-track">
+                                    <div className="bar-fill" style={{ width: `${(count / Math.max(1, customerReviews.length)) * 100}%` }}></div>
+                                  </div>
+                                  <span className="bar-count">{count}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="no-rating-state">Chưa có đánh giá</div>
+                        )}
+                      </div>
+
+                      {customerReviews.length === 0 ? (
+                        <div className="empty-state">
+                          <span className="empty-icon">⭐</span>
+                          <p>Chưa có đánh giá</p>
+                        </div>
+                      ) : (
+                        <div className="reviews-list-modern">
+                          {customerReviews.map(r => (
+                            <div key={r._id} className="review-card-modern">
+                              <div className="review-top">
+                                <div className="review-stars-rating">
+                                  {Array.from({ length: r.qualityRating || 0 }).map((_, i) => <span key={i} className="star active">★</span>)}
+                                </div>
+                                <div className="review-date-text">{r.ngayHoanTat ? new Date(r.ngayHoanTat).toLocaleDateString('vi-VN') : (r.updatedAt ? new Date(r.updatedAt).toLocaleDateString('vi-VN') : 'N/A')}</div>
+                              </div>
+                              <div className="review-content">
+                                <p className="review-text">{r.qualityComments || 'Không có nhận xét'}</p>
+                              </div>
+                              <div className="review-footer">
+                                <span className="review-product">{r.sanPhamId?.tenSP || 'Sản phẩm không xác định'}</span>
+                                <span className="review-separator">•</span>
+                                <span className="review-ticket">{r.maPhieu}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="right-column">
+                  <div className="section-card">
+                    <div className="card-header">
+                      <span className="card-icon">📦</span>
+                      <h4>Sản phẩm ({customerProducts.length})</h4>
+                    </div>
+                    <div className="card-body">
+                      {customerProducts.length === 0 ? (
+                        <div className="empty-state">
+                          <span className="empty-icon">📦</span>
+                          <p>Chưa có sản phẩm</p>
+                        </div>
+                      ) : (
+                        <div className="table-container-modern">
+                          {customerProducts.map(p => (
+                            <div key={p._id} className="product-item">
+                              <div className="product-info">
+                                <div className="product-name">{p.tenSP}</div>
+                                <div className="product-meta">
+                                  <span className="product-type">{p.loaiSanPham}</span>
+                                  <span className="product-serial">SN: {p.soSerial}</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="section-card">
+                    <div className="card-header">
+                      <span className="card-icon">📋</span>
+                      <h4>Phiếu bảo hành ({customerTickets.length})</h4>
+                    </div>
+                    <div className="card-body">
+                      {customerTickets.length === 0 ? (
+                        <div className="empty-state">
+                          <span className="empty-icon">📋</span>
+                          <p>Chưa có phiếu</p>
+                        </div>
+                      ) : (
+                        <div className="tickets-list">
+                          {customerTickets.map(t => (
+                            <div key={t._id} className="ticket-item">
+                              <div className="ticket-header">
+                                <span className="ticket-code">{t.maPhieu}</span>
+                                <span className={`status-badge ${getStatusBadge(t.trangThai).class}`}>
+                                  {getStatusBadge(t.trangThai).text}
+                                </span>
+                              </div>
+                              <div className="ticket-body">
+                                <div className="ticket-product">{t.sanPhamId?.tenSP || 'N/A'}</div>
+                                <div className="ticket-date">{t.ngayTiepNhan ? new Date(t.ngayTiepNhan).toLocaleDateString('vi-VN') : 'N/A'}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => { setShowCustomerModal(false); setSelectedCustomer(null); }}>Đóng</button>
+            </div>
+          </div>
         </div>
       )}
       {success && (
@@ -482,6 +854,39 @@ export default function ManagerPage({ onLogout }) {
             <div className="section-header">
               <h2 className="section-title">📋 Quản lý phiếu bảo hành</h2>
             </div>
+
+            <div className="filter-bar">
+              <div className="filter-group">
+                <label>🔍 Tìm kiếm:</label>
+                <input
+                  type="text"
+                  placeholder="Mã phiếu, sản phẩm, khách hàng..."
+                  value={ticketSearch}
+                  onChange={(e) => setTicketSearch(e.target.value)}
+                  className="filter-input"
+                />
+              </div>
+              <div className="filter-group">
+                <label>🏷️ Trạng thái:</label>
+                <select
+                  value={ticketStatusFilter}
+                  onChange={(e) => setTicketStatusFilter(e.target.value)}
+                  className="filter-select"
+                >
+                  <option value="all">Tất cả</option>
+                  <option value="tiep_nhan">Tiếp nhận</option>
+                  <option value="dang_kiem_tra">Đang kiểm tra</option>
+                  <option value="dang_sua">Đang sửa</option>
+                  <option value="hoan_tat">Hoàn tất</option>
+                  <option value="tu_choi">Từ chối</option>
+                </select>
+              </div>
+              {(ticketSearch || ticketStatusFilter !== 'all') && (
+                <button className="btn-clear-filter" onClick={() => { setTicketSearch(''); setTicketStatusFilter('all'); }}>
+                  ✕ Xóa bộ lọc
+                </button>
+              )}
+            </div>
             
             <div className="table-container">
               <table className="data-table">
@@ -498,10 +903,10 @@ export default function ManagerPage({ onLogout }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {tickets.length === 0 ? (
-                    <tr><td colSpan="8" className="text-center">Chưa có phiếu nào</td></tr>
+                  {getFilteredTickets().length === 0 ? (
+                    <tr><td colSpan="8" className="text-center">{tickets.length === 0 ? 'Chưa có phiếu nào' : 'Không tìm thấy kết quả phù hợp'}</td></tr>
                   ) : (
-                    tickets.map(ticket => (
+                    getFilteredTickets().map(ticket => (
                       <tr key={ticket._id}>
                         <td><strong>{ticket.maPhieu}</strong></td>
                         <td>{ticket.sanPhamId?.tenSP || 'N/A'}</td>
@@ -530,6 +935,13 @@ export default function ManagerPage({ onLogout }) {
                           >
                             👤
                           </button>
+                          <button
+                            className="btn-icon btn-view"
+                            onClick={() => { setSelectedTicketDetail(ticket); setShowTicketDetail(true); }}
+                            title="Xem chi tiết"
+                          >
+                            🔍
+                          </button>
                         </td>
                       </tr>
                     ))
@@ -553,6 +965,38 @@ export default function ManagerPage({ onLogout }) {
                 <span>➕</span> Thêm sản phẩm
               </button>
             </div>
+
+            <div className="filter-bar">
+              <div className="filter-group">
+                <label>🔍 Tìm kiếm:</label>
+                <input
+                  type="text"
+                  placeholder="Tên, serial, thương hiệu..."
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                  className="filter-input"
+                />
+              </div>
+              <div className="filter-group">
+                <label>📦 Loại:</label>
+                <select
+                  value={productTypeFilter}
+                  onChange={(e) => setProductTypeFilter(e.target.value)}
+                  className="filter-select"
+                >
+                  <option value="all">Tất cả</option>
+                  <option value="Vot">Vợt</option>
+                  <option value="Giay">Giày</option>
+                  <option value="Balo">Balo</option>
+                  <option value="PhuKien">Phụ kiện</option>
+                </select>
+              </div>
+              {(productSearch || productTypeFilter !== 'all') && (
+                <button className="btn-clear-filter" onClick={() => { setProductSearch(''); setProductTypeFilter('all'); }}>
+                  ✕ Xóa bộ lọc
+                </button>
+              )}
+            </div>
             
             <div className="table-container">
               <table className="data-table">
@@ -568,13 +1012,25 @@ export default function ManagerPage({ onLogout }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {products.length === 0 ? (
-                    <tr><td colSpan="7" className="text-center">Chưa có sản phẩm nào</td></tr>
+                  {getFilteredProducts().length === 0 ? (
+                    <tr><td colSpan="7" className="text-center">{products.length === 0 ? 'Chưa có sản phẩm nào' : 'Không tìm thấy kết quả phù hợp'}</td></tr>
                   ) : (
-                    products.map(product => (
+                    getFilteredProducts().map(product => (
                       <tr key={product._id}>
                         <td><code>{product._id.slice(-6)}</code></td>
-                        <td><strong>{product.tenSP}</strong></td>
+                        <td>
+                          <button
+                            className="btn-link product-detail-link"
+                            style={{ background: 'none', border: 'none', color: '#2563eb', textDecoration: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '1rem', padding: 0 }}
+                            onClick={() => {
+                              setSelectedProductDetail(product);
+                              setShowProductDetailModal(true);
+                            }}
+                            title="Xem chi tiết sản phẩm"
+                          >
+                            {product.tenSP}
+                          </button>
+                        </td>
                         <td><span className="badge badge-info">{product.loaiSanPham}</span></td>
                         <td>{product.thuongHieu || 'N/A'}</td>
                         <td><code>{product.soSerial}</code></td>
@@ -608,6 +1064,36 @@ export default function ManagerPage({ onLogout }) {
                 <span>➕</span> Thêm nhân viên
               </button>
             </div>
+
+            <div className="filter-bar">
+              <div className="filter-group">
+                <label>🔍 Tìm kiếm:</label>
+                <input
+                  type="text"
+                  placeholder="Tên, email..."
+                  value={employeeSearch}
+                  onChange={(e) => setEmployeeSearch(e.target.value)}
+                  className="filter-input"
+                />
+              </div>
+              <div className="filter-group">
+                <label>💼 Chức vụ:</label>
+                <select
+                  value={employeeRoleFilter}
+                  onChange={(e) => setEmployeeRoleFilter(e.target.value)}
+                  className="filter-select"
+                >
+                  <option value="all">Tất cả</option>
+                  <option value="nhanvien">Nhân viên</option>
+                  <option value="quanly">Quản lý</option>
+                </select>
+              </div>
+              {(employeeSearch || employeeRoleFilter !== 'all') && (
+                <button className="btn-clear-filter" onClick={() => { setEmployeeSearch(''); setEmployeeRoleFilter('all'); }}>
+                  ✕ Xóa bộ lọc
+                </button>
+              )}
+            </div>
             
             <div className="table-container">
               <table className="data-table">
@@ -622,10 +1108,10 @@ export default function ManagerPage({ onLogout }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {employees.length === 0 ? (
-                    <tr><td colSpan="6" className="text-center">Chưa có nhân viên nào</td></tr>
+                  {getFilteredEmployees().length === 0 ? (
+                    <tr><td colSpan="6" className="text-center">{employees.length === 0 ? 'Chưa có nhân viên nào' : 'Không tìm thấy kết quả phù hợp'}</td></tr>
                   ) : (
-                    employees.map(emp => (
+                    getFilteredEmployees().map(emp => (
                       <tr key={emp._id}>
                         <td><code>{emp._id.slice(-6)}</code></td>
                         <td><strong>{emp.hoTen}</strong></td>
@@ -637,8 +1123,83 @@ export default function ManagerPage({ onLogout }) {
                         </td>
                         <td>{emp.createdAt ? new Date(emp.createdAt).toLocaleDateString('vi-VN') : 'N/A'}</td>
                         <td className="action-buttons">
+                          <button className="btn-icon btn-edit" onClick={() => handleEditEmployee(emp)} title="Sửa">
+                            ✏️
+                          </button>
                           <button className="btn-icon btn-delete" onClick={() => handleDeleteEmployee(emp._id)} title="Xóa">
                             🗑️
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Customers Tab */}
+        {activeTab === 'customers' && (
+          <div className="customers-section">
+            <div className="section-header">
+              <h2 className="section-title">👤 Quản lý khách hàng</h2>
+            </div>
+
+            <div className="filter-bar">
+              <div className="filter-group">
+                <label>🔍 Tìm kiếm:</label>
+                <input
+                  type="text"
+                  placeholder="Tên, email, số điện thoại..."
+                  value={customerSearch}
+                  onChange={(e) => setCustomerSearch(e.target.value)}
+                  className="filter-input"
+                />
+              </div>
+              {customerSearch && (
+                <button className="btn-clear-filter" onClick={() => setCustomerSearch('')}>
+                  ✕ Xóa bộ lọc
+                </button>
+              )}
+            </div>
+            
+            <div className="table-container">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Họ tên</th>
+                    <th>Email</th>
+                    <th>Đánh giá</th>
+                    <th>Số điện thoại</th>
+                    <th>Ngày tạo</th>
+                    <th>Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {getFilteredCustomers().length === 0 ? (
+                    <tr><td colSpan="7" className="text-center">{customers.length === 0 ? 'Chưa có khách hàng nào' : 'Không tìm thấy kết quả phù hợp'}</td></tr>
+                  ) : (
+                    getFilteredCustomers().map(customer => (
+                      <tr key={customer._id}>
+                        <td><code>{customer._id.slice(-6)}</code></td>
+                        <td><strong>{customer.hoTen}</strong></td>
+                        <td>{customer.email}</td>
+                        <td>
+                          {(() => {
+                            const custTickets = tickets.filter(t => t.khachHangId?._id === customer._id || t.khachHangId === customer._id)
+                            const reviews = custTickets.filter(t => t.qualityRating && t.qualityRating > 0)
+                            if (reviews.length === 0) return <span className="badge badge-secondary">No reviews</span>
+                            const avg = (reviews.reduce((s, r) => s + (r.qualityRating || 0), 0) / reviews.length).toFixed(1)
+                            return <span className="badge badge-success">⭐ {avg} ({reviews.length})</span>
+                          })()}
+                        </td>
+                        <td>{customer.soDienThoai || 'N/A'}</td>
+                        <td>{(customer.ngayTao || customer.createdAt) ? new Date(customer.ngayTao || customer.createdAt).toLocaleDateString('vi-VN') : 'N/A'}</td>
+                        <td className="action-buttons">
+                          <button className="btn-icon btn-view" onClick={() => openCustomerModal(customer)} title="Xem chi tiết">
+                            👁️
                           </button>
                         </td>
                       </tr>
@@ -748,12 +1309,30 @@ export default function ManagerPage({ onLogout }) {
 
               <div className="form-group">
                 <label>Thông tin kỹ thuật</label>
-                <textarea
-                  value={productForm.thongTinKyThuat}
-                  onChange={(e) => setProductForm({...productForm, thongTinKyThuat: e.target.value})}
-                  rows="3"
-                  placeholder="VD: Trọng lượng: 85g, Điểm cân bằng: 295mm..."
-                />
+                <div style={{display:'grid',gridTemplateColumns:'1fr',gap:'0.5rem'}}>
+                  <textarea
+                    value={productForm.thongTinKyThuat?.moTa || ''}
+                    onChange={(e) => setProductForm({...productForm, thongTinKyThuat: {...(productForm.thongTinKyThuat||{}), moTa: e.target.value}})}
+                    rows="3"
+                    placeholder="Mô tả - VD: Sản phẩm chính hãng..."
+                  />
+                  <div style={{display:'flex',gap:'0.75rem'}}>
+                    <input
+                      type="text"
+                      value={productForm.thongTinKyThuat?.xuatXu || ''}
+                      onChange={(e) => setProductForm({...productForm, thongTinKyThuat: {...(productForm.thongTinKyThuat||{}), xuatXu: e.target.value}})}
+                      placeholder="Xuất xứ"
+                      style={{flex:1}}
+                    />
+                    <input
+                      type="text"
+                      value={productForm.thongTinKyThuat?.trongLuong || ''}
+                      onChange={(e) => setProductForm({...productForm, thongTinKyThuat: {...(productForm.thongTinKyThuat||{}), trongLuong: e.target.value}})}
+                      placeholder="Trọng lượng (VD: 85g)"
+                      style={{width:140}}
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="modal-actions">
@@ -769,16 +1348,133 @@ export default function ManagerPage({ onLogout }) {
         </div>
       )}
 
+      {/* Ticket Detail Page / Modal */}
+      {showTicketDetail && selectedTicketDetail && (
+        <div className="modal-overlay" onClick={() => setShowTicketDetail(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{maxWidth: '1000px'}}>
+            <div className="product-detail-header-modern">
+              <div className="product-header-icon">🧾</div>
+              <div className="product-header-info">
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <div>
+                    <div className="product-title">Phiếu bảo hành: {selectedTicketDetail.maPhieu}</div>
+                    <div className="product-meta-row">
+                      <div className="product-type-badge">{getStatusBadge(selectedTicketDetail.trangThai).text}</div>
+                      <div className="product-brand">{selectedTicketDetail.sanPhamId?.thuongHieu || ''}</div>
+                      <div className="product-serial">{selectedTicketDetail.sanPhamId?.soSerial || ''}</div>
+                    </div>
+                  </div>
+                  <div style={{textAlign:'right'}}>
+                    <div style={{fontSize:'0.95rem',color:'#e6f2ff'}}>Ngày tiếp nhận</div>
+                    <div style={{fontWeight:700}}>{new Date(selectedTicketDetail.ngayTiepNhan).toLocaleString('vi-VN')}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="product-detail-body-modern">
+              <div className="product-detail-modern-grid">
+                <div className="product-detail-modern-left">
+                  <div className="product-info-table-modern">
+                    <div className="info-row-modern">
+                      <div className="info-icon-modern">👤</div>
+                      <div className="info-label-modern">Khách hàng</div>
+                      <div className="info-value-modern">{selectedTicketDetail.khachHangId?.hoTen || 'N/A'}<div style={{fontSize:'0.95rem',fontWeight:500,color:'#64748b'}}>{selectedTicketDetail.thongTinLienHe?.soDienThoai || selectedTicketDetail.khachHangId?.soDienThoai || ''}</div></div>
+                    </div>
+
+                    <div className="info-row-modern">
+                      <div className="info-icon-modern">🏸</div>
+                      <div className="info-label-modern">Sản phẩm</div>
+                      <div className="info-value-modern">{selectedTicketDetail.sanPhamId?.tenSP || 'N/A'}<div style={{fontSize:'0.95rem',fontWeight:500,color:'#64748b'}}>{selectedTicketDetail.thongTinLienHe?.soSerial || selectedTicketDetail.sanPhamId?.soSerial || ''}</div></div>
+                    </div>
+
+                    <div className="info-row-modern">
+                      <div className="info-icon-modern">⚠️</div>
+                      <div className="info-label-modern">Mô tả lỗi</div>
+                      <div className="info-value-modern" style={{whiteSpace:'pre-line'}}>{selectedTicketDetail.moTaLoi || 'N/A'}</div>
+                    </div>
+
+                    <div className="info-row-modern">
+                      <div className="info-icon-modern">🔎</div>
+                      <div className="info-label-modern">Dự đoán</div>
+                      <div className="info-value-modern">{selectedTicketDetail.loaiLoiDuDoan || '-'}</div>
+                    </div>
+
+                    <div className="info-row-modern">
+                      <div className="info-icon-modern">👷</div>
+                      <div className="info-label-modern">Nhân viên</div>
+                      <div className="info-value-modern">{selectedTicketDetail.nhanVienTiepNhanId?.hoTen || 'Chưa gán'}</div>
+                    </div>
+
+                    <div className="info-row-modern">
+                      <div className="info-icon-modern">💬</div>
+                      <div className="info-label-modern">Ghi chú xử lý</div>
+                      <div className="info-value-modern" style={{whiteSpace:'pre-line'}}>{selectedTicketDetail.moTaXuLy || 'N/A'}</div>
+                    </div>
+
+                  </div>
+
+                  <div className="tech-block">
+                    <div className="tech-content-modern">Lịch sử tiến độ</div>
+                    {selectedTicketDetail.moTaTienDo && selectedTicketDetail.moTaTienDo.length > 0 ? (
+                      selectedTicketDetail.moTaTienDo.map((item, idx) => (
+                        <div key={idx} style={{padding:'0.6rem 0',borderBottom:'1px solid #eef2f7'}}>
+                          <div style={{fontSize:'0.95rem',color:'#64748b'}}>{new Date(item.thoiGian).toLocaleString('vi-VN')}</div>
+                          <div style={{fontWeight:600}}>{item.noiDung}</div>
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{padding:'0.6rem 0',color:'#64748b'}}>Chưa có tiến độ</div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="product-detail-modern-right">
+                  <div className="product-invoice-image-block">
+                    <div className="invoice-label">Hình ảnh lỗi</div>
+                    {selectedTicketDetail.hinhAnhLoi && selectedTicketDetail.hinhAnhLoi.length > 0 ? (
+                      selectedTicketDetail.hinhAnhLoi.map((src, i) => {
+                        const imageSrc = src && src.startsWith('http') ? src : `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${src}`
+                        return (
+                          <img key={i} src={imageSrc} alt={`Lỗi ${i+1}`} style={{maxWidth:280,display:'block',margin:'8px auto',borderRadius:8}} />
+                        )
+                      })
+                    ) : (
+                      <div style={{color:'#64748b'}}>Không có ảnh</div>
+                    )}
+                  </div>
+
+                  <div className="product-invoice-image-block">
+                    <div className="invoice-label">Chi phí phát sinh</div>
+                    <div style={{fontWeight:700, fontSize:'1.2rem'}}>{(selectedTicketDetail.chiPhiPhatSinh || 0).toLocaleString('vi-VN')} đ</div>
+                  </div>
+
+                  <div className="product-invoice-image-block">
+                    <div className="invoice-label">Trạng thái</div>
+                    <div style={{fontWeight:700}}>{getStatusBadge(selectedTicketDetail.trangThai).text}</div>
+                    <div style={{marginTop:6,fontSize:'0.95rem',color:'#64748b'}}>Ngày hoàn tất: {selectedTicketDetail.ngayHoanTat ? new Date(selectedTicketDetail.ngayHoanTat).toLocaleString('vi-VN') : '-'}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => setShowTicketDetail(false)}>Đóng</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Employee Modal */}
       {showEmployeeModal && (
         <div className="modal-overlay" onClick={() => setShowEmployeeModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>➕ Thêm nhân viên mới</h3>
-              <button className="modal-close" onClick={() => setShowEmployeeModal(false)}>×</button>
+              <h3>{editingEmployee ? '✏️ Sửa thông tin nhân viên' : '➕ Thêm nhân viên mới'}</h3>
+              <button className="modal-close" onClick={() => { setShowEmployeeModal(false); setEditingEmployee(null); }}>×</button>
             </div>
             
-            <form onSubmit={handleCreateEmployee} className="modal-form">
+            <form onSubmit={editingEmployee ? handleUpdateEmployee : handleCreateEmployee} className="modal-form">
               <div className="form-group">
                 <label>Họ tên *</label>
                 <input
@@ -802,14 +1498,13 @@ export default function ManagerPage({ onLogout }) {
               </div>
 
               <div className="form-group">
-                <label>Mật khẩu *</label>
+                <label>Mật khẩu {editingEmployee ? '(để trống nếu không đổi)' : '*'}</label>
                 <input
                   type="password"
                   value={employeeForm.matKhau}
                   onChange={(e) => setEmployeeForm({...employeeForm, matKhau: e.target.value})}
-                  placeholder="••••••••"
-                  required
-                  minLength="6"
+                  placeholder={editingEmployee ? 'Để trống nếu không muốn đổi mật khẩu' : '••••••••'}
+                  {...(editingEmployee ? {} : { required: true, minLength: 6 })}
                 />
               </div>
 
@@ -830,7 +1525,7 @@ export default function ManagerPage({ onLogout }) {
                   Hủy
                 </button>
                 <button type="submit" className="btn-primary" disabled={loading}>
-                  {loading ? 'Đang tạo...' : 'Tạo nhân viên'}
+                  {loading ? (editingEmployee ? 'Đang cập nhật...' : 'Đang tạo...') : (editingEmployee ? 'Cập nhật' : 'Tạo nhân viên')}
                 </button>
               </div>
             </form>
@@ -841,46 +1536,107 @@ export default function ManagerPage({ onLogout }) {
       {/* Assign Employee Modal */}
       {showAssignModal && selectedTicket && (
         <div className="modal-overlay" onClick={() => setShowAssignModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>👤 Gán nhân viên xử lý</h3>
-              <button className="modal-close" onClick={() => setShowAssignModal(false)}>×</button>
+          <div className="modal-content modal-assign" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header-modern">
+              <div className="modal-title-section">
+                <span className="modal-icon">👤</span>
+                <div>
+                  <h3>Gán nhân viên xử lý</h3>
+                  <p className="modal-subtitle">Chọn nhân viên phù hợp để xử lý phiếu bảo hành</p>
+                </div>
+              </div>
+              <button className="modal-close-modern" onClick={() => setShowAssignModal(false)}>✕</button>
             </div>
             
-            <div className="modal-body">
-              <div className="ticket-info-box">
-                <p><strong>Mã phiếu:</strong> {selectedTicket.maPhieu}</p>
-                <p><strong>Sản phẩm:</strong> {selectedTicket.sanPhamId?.tenSP || 'N/A'}</p>
-                <p><strong>Khách hàng:</strong> {selectedTicket.khachHangId?.hoTen || 'N/A'}</p>
-                <p><strong>Trạng thái:</strong> <span className={`badge ${getStatusBadge(selectedTicket.trangThai).class}`}>
-                  {getStatusBadge(selectedTicket.trangThai).text}
-                </span></p>
-                {selectedTicket.nhanVienTiepNhanId && (
-                  <p><strong>Nhân viên hiện tại:</strong> {selectedTicket.nhanVienTiepNhanId.hoTen}</p>
-                )}
+            <div className="modal-body-modern">
+              {/* Ticket Info Card */}
+              <div className="assign-ticket-card">
+                <div className="ticket-card-header">
+                  <span className="ticket-icon">📋</span>
+                  <h4>Thông tin phiếu</h4>
+                </div>
+                <div className="ticket-card-body">
+                  <div className="ticket-info-row">
+                    <span className="info-icon">🏷️</span>
+                    <div className="info-content">
+                      <span className="info-label">Mã phiếu</span>
+                      <span className="info-value highlight">{selectedTicket.maPhieu}</span>
+                    </div>
+                  </div>
+                  <div className="ticket-info-row">
+                    <span className="info-icon">📦</span>
+                    <div className="info-content">
+                      <span className="info-label">Sản phẩm</span>
+                      <span className="info-value">{selectedTicket.sanPhamId?.tenSP || 'N/A'}</span>
+                    </div>
+                  </div>
+                  <div className="ticket-info-row">
+                    <span className="info-icon">👤</span>
+                    <div className="info-content">
+                      <span className="info-label">Khách hàng</span>
+                      <span className="info-value">{selectedTicket.khachHangId?.hoTen || 'N/A'}</span>
+                    </div>
+                  </div>
+                  <div className="ticket-info-row">
+                    <span className="info-icon">📈</span>
+                    <div className="info-content">
+                      <span className="info-label">Trạng thái</span>
+                      <span className={`badge ${getStatusBadge(selectedTicket.trangThai).class}`}>
+                        {getStatusBadge(selectedTicket.trangThai).text}
+                      </span>
+                    </div>
+                  </div>
+                  {selectedTicket.nhanVienTiepNhanId && (
+                    <div className="ticket-info-row highlight-row">
+                      <span className="info-icon">👨‍🔧</span>
+                      <div className="info-content">
+                        <span className="info-label">Nhân viên hiện tại</span>
+                        <span className="info-value">{selectedTicket.nhanVienTiepNhanId.hoTen}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="employee-list">
-                <h4>Chọn nhân viên:</h4>
+              {/* Employee Selection */}
+              <div className="assign-employee-section">
+                <div className="section-title-bar">
+                  <span className="section-icon">👥</span>
+                  <h4>Chọn nhân viên:</h4>
+                </div>
                 {employees.filter(emp => emp.chucVu === 'nhanvien').length === 0 ? (
-                  <p className="text-muted">Không có nhân viên nào</p>
+                  <div className="empty-employees">
+                    <span className="empty-icon">🚧</span>
+                    <p>Không có nhân viên nào</p>
+                  </div>
                 ) : (
-                  <div className="employee-grid">
+                  <div className="employee-selection-grid">
                     {employees.filter(emp => emp.chucVu === 'nhanvien').map(emp => (
                       <button
                         key={emp._id}
-                        className={`employee-card ${selectedTicket.nhanVienTiepNhanId?._id === emp._id ? 'selected' : ''}`}
+                        className={`employee-select-card ${
+                          selectedTicket.nhanVienTiepNhanId?._id === emp._id ? 'current' : ''
+                        }`}
                         onClick={() => handleAssignEmployee(emp._id)}
                         disabled={loading}
                       >
-                        <div className="employee-avatar">👤</div>
-                        <div className="employee-info">
-                          <div className="employee-name">{emp.hoTen}</div>
-                          <div className="employee-email">{emp.email}</div>
+                        <div className="employee-card-header">
+                          <div className="employee-avatar-modern">
+                            <span>👨‍🔧</span>
+                          </div>
+                          {selectedTicket.nhanVienTiepNhanId?._id === emp._id && (
+                            <span className="current-badge-modern">✓ Hiện tại</span>
+                          )}
                         </div>
-                        {selectedTicket.nhanVienTiepNhanId?._id === emp._id && (
-                          <div className="current-badge">✓ Hiện tại</div>
-                        )}
+                        <div className="employee-card-body">
+                          <div className="employee-name-modern">{emp.hoTen}</div>
+                          <div className="employee-email-modern">{emp.email}</div>
+                        </div>
+                        <div className="employee-card-footer">
+                          <span className="select-text">
+                            {selectedTicket.nhanVienTiepNhanId?._id === emp._id ? '🔄 Đổi gán' : '✅ Chọn'}
+                          </span>
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -888,10 +1644,100 @@ export default function ManagerPage({ onLogout }) {
               </div>
             </div>
 
-            <div className="modal-actions">
-              <button type="button" className="btn-secondary" onClick={() => setShowAssignModal(false)}>
-                Đóng
+            <div className="modal-actions-modern">
+              <button type="button" className="btn-cancel-modern" onClick={() => setShowAssignModal(false)}>
+                ✖ Đóng
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Product Detail Modal */}
+      {showProductDetailModal && selectedProductDetail && (
+        <div className="modal-overlay" onClick={() => setShowProductDetailModal(false)}>
+          <div className="modal-content modal-large" onClick={e => e.stopPropagation()}>
+            <div className="modal-header product-detail-header-modern">
+              <div className="product-header-icon">🏸</div>
+              <div className="product-header-info">
+                <div className="product-title">{selectedProductDetail?.tenSP || 'Tên sản phẩm'}</div>
+                <div className="product-meta-row">
+                  <span className="product-type-badge">{selectedProductDetail?.loaiSanPham || 'Loại'}</span>
+                  <span className="product-brand">{selectedProductDetail?.thuongHieu || 'Thương hiệu'}</span>
+                  <span className="product-serial">SN: {selectedProductDetail?.soSerial || 'N/A'}</span>
+                </div>
+              </div>
+              <button className="modal-close" onClick={() => setShowProductDetailModal(false)}>×</button>
+            </div>
+            <div className="modal-body product-detail-body-modern">
+              <div className="product-detail-modern-grid">
+                <div className="product-detail-modern-left">
+                  <div className="product-info-fullwidth">
+                    <div className="info-row-fw">
+                      <span className="info-icon-fw">📅</span>
+                      <span className="info-label-fw">Ngày mua</span>
+                      <span className="info-value-fw">{selectedProductDetail?.ngayMua ? (new Date(selectedProductDetail.ngayMua)).toLocaleDateString('vi-VN') : 'N/A'}</span>
+                    </div>
+                    <div className="info-row-fw">
+                      <span className="info-icon-fw">⏳</span>
+                      <span className="info-label-fw">Bảo hành</span>
+                      <span className="info-value-fw">{selectedProductDetail?.thoiHanBaoHanhThang ? selectedProductDetail.thoiHanBaoHanhThang + ' tháng' : 'N/A'}</span>
+                    </div>
+                    <div className="info-row-fw">
+                      <span className="info-icon-fw">👤</span>
+                      <span className="info-label-fw">Khách hàng</span>
+                      <span className="info-value-fw">{(() => {
+                        if (!selectedProductDetail?.khachHangId) return 'N/A';
+                        let kh = null;
+                        if (typeof selectedProductDetail.khachHangId === 'object') {
+                          kh = customers.find(c => c._id === selectedProductDetail.khachHangId._id);
+                        } else {
+                          kh = customers.find(c => c._id === selectedProductDetail.khachHangId);
+                        }
+                        return kh ? <><b>{kh.hoTen}</b><br /><span style={{fontWeight:400}}>{kh.email}</span></> : 'N/A';
+                      })()}</span>
+                    </div>
+                    <div className="info-row-fw tech-fw">
+                      <span className="info-icon-fw">🛠️</span>
+                      <span className="info-label-fw">Thông tin kỹ thuật</span>
+                      <div className="info-value-fw tech-content-fw" style={{padding:0,margin:0}}>
+                        {selectedProductDetail?.thongTinKyThuat
+                          ? (typeof selectedProductDetail.thongTinKyThuat === 'object'
+                              ? (
+                                <div className="tech-table-fw">
+                                  {Object.entries(selectedProductDetail.thongTinKyThuat).map(([key, value]) =>
+                                    key === 'moTa' ? (
+                                      <div className="tech-row-fw tech-row-desc-fw" key={key}>
+                                        <span className="tech-label-fw">Mô tả</span>
+                                        <div className="tech-value-fw tech-desc-fw">{value}</div>
+                                      </div>
+                                    ) : (
+                                      <div className="tech-row-fw" key={key}>
+                                        <span className="tech-label-fw">{key === 'xuatXu' ? 'Xuất xứ' : key === 'trongLuong' ? 'Trọng lượng' : key}</span>
+                                        <div className="tech-value-fw plain-value-fw">{value}</div>
+                                      </div>
+                                    )
+                                  )}
+                                </div>
+                              )
+                              : <span>{selectedProductDetail.thongTinKyThuat}</span>)
+                          : 'N/A'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="product-detail-modern-right">
+                  {selectedProductDetail?.hinhAnhHoaDon && typeof selectedProductDetail.hinhAnhHoaDon === 'string' && (
+                    <div className="product-invoice-image-block">
+                      <div className="invoice-label">Ảnh hóa đơn</div>
+                      <img src={selectedProductDetail.hinhAnhHoaDon} alt="Hóa đơn" className="product-invoice-image" />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => setShowProductDetailModal(false)}>Đóng</button>
             </div>
           </div>
         </div>

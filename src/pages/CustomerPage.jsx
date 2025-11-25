@@ -1,8 +1,25 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { customerAPI, storage, generalAPI } from '../services/api'
 import '../styles/CustomerPage.css'
 
 export default function CustomerPage({ onLogout }) {
+  const user = storage.getUser()
+
+  const MAX_ATTACHMENT_SIZE = 8 * 1024 * 1024
+  const MAX_ATTACHMENT_SIZE_MB = Math.round(MAX_ATTACHMENT_SIZE / (1024 * 1024))
+  const MAX_ATTACHMENT_COUNT = 5
+
+  const createInitialWarrantyForm = () => ({
+    sanPhamId: '',
+    hoTen: user?.hoTen || '',
+    soDienThoai: user?.soDienThoai || '',
+    email: user?.email || '',
+    maDonHang: '',
+    soSerial: '',
+    moTaLoi: '',
+    attachments: []
+  })
+
   const [activeTab, setActiveTab] = useState('overview')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -18,10 +35,7 @@ export default function CustomerPage({ onLogout }) {
   // Form states
   const [ticketCode, setTicketCode] = useState('')
   const [productSerial, setProductSerial] = useState('')
-  const [warrantyForm, setWarrantyForm] = useState({
-    sanPhamId: '',
-    moTaLoi: '',
-  })
+  const [warrantyForm, setWarrantyForm] = useState(createInitialWarrantyForm)
   
   const [ratingForm, setRatingForm] = useState({
     ticketId: '',
@@ -29,11 +43,26 @@ export default function CustomerPage({ onLogout }) {
     comment: ''
   })
 
-  const user = storage.getUser()
+  const updateWarrantyField = (field, value) => {
+    setWarrantyForm(prev => ({ ...prev, [field]: value }))
+  }
 
   useEffect(() => {
     loadData()
   }, [activeTab])
+
+  // Auto-hide success and error messages after 4 seconds
+  useEffect(() => {
+    if (!success) return
+    const t = setTimeout(() => setSuccess(''), 4000)
+    return () => clearTimeout(t)
+  }, [success])
+
+  useEffect(() => {
+    if (!error) return
+    const t = setTimeout(() => setError(''), 4000)
+    return () => clearTimeout(t)
+  }, [error])
 
   const loadData = async () => {
     if (activeTab === 'overview' || activeTab === 'myTickets') {
@@ -49,9 +78,8 @@ export default function CustomerPage({ onLogout }) {
       setLoading(true)
       const data = await customerAPI.getWarrantyInfo(user.id)
       setMyTickets(data.tickets || [])
-    } catch (err) {
-      console.error('Error loading tickets:', err)
-      setError(err.message)
+    } catch (e) {
+      console.error('Error loading tickets:', e)
     } finally {
       setLoading(false)
     }
@@ -95,21 +123,155 @@ export default function CustomerPage({ onLogout }) {
     }
   }
 
+  const convertFileToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result)
+      reader.onerror = (error) => reject(error)
+      reader.readAsDataURL(file)
+    })
+  }
+
+  const handleAttachmentChange = async (event) => {
+    const input = event.target
+    const selectedFiles = Array.from(input.files || [])
+    if (selectedFiles.length === 0) return
+
+    const messages = []
+    const availableSlots = Math.max(0, MAX_ATTACHMENT_COUNT - warrantyForm.attachments.length)
+    const filesToProcess = availableSlots > 0 ? selectedFiles.slice(0, availableSlots) : []
+
+    if (selectedFiles.length > filesToProcess.length) {
+      messages.push(`Chỉ được đính kèm tối đa ${MAX_ATTACHMENT_COUNT} tệp minh họa.`)
+    }
+
+    const processedFiles = []
+
+    for (const file of filesToProcess) {
+      if (file.size > MAX_ATTACHMENT_SIZE) {
+        messages.push(`Tệp "${file.name}" vượt quá dung lượng ${MAX_ATTACHMENT_SIZE_MB}MB.`)
+        continue
+      }
+
+      // Store the File object directly so we can send FormData to backend
+      processedFiles.push({
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        file: file,
+        preview: URL.createObjectURL(file)
+      })
+    }
+
+    if (processedFiles.length > 0) {
+      setWarrantyForm(prev => ({
+        ...prev,
+        attachments: [...prev.attachments, ...processedFiles]
+      }))
+    }
+
+    if (messages.length > 0) {
+      setError(messages.join(' '))
+      setSuccess('')
+    }
+
+    input.value = ''
+  }
+
+  const handleRemoveAttachment = (index) => {
+    setWarrantyForm(prev => {
+      const removed = prev.attachments[index]
+      if (removed && removed.preview) {
+        try { URL.revokeObjectURL(removed.preview) } catch (e) {}
+      }
+      return {
+        ...prev,
+        attachments: prev.attachments.filter((_, idx) => idx !== index)
+      }
+    })
+  }
+
+  const formatAttachmentSize = (size) => {
+    if (size === undefined || size === null) return ''
+    if (size < 1024) return `${size} B`
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`
+  }
+
   const handleSubmitWarrantyRequest = async (e) => {
     e.preventDefault()
+    setError('')
+    setSuccess('')
+
+    if (!warrantyForm.hoTen.trim() || !warrantyForm.soDienThoai.trim()) {
+      setError('Vui lòng nhập họ tên và số điện thoại liên hệ.')
+      return
+    }
+
+    if (!warrantyForm.maDonHang.trim() && !warrantyForm.soSerial.trim()) {
+      setError('Vui lòng nhập mã đơn hàng hoặc số serial sản phẩm.')
+      return
+    }
+
     try {
       setLoading(true)
-      setError('')
-      setSuccess('')
-      
-      const result = await customerAPI.submitWarrantyRequest({
-        sanPhamId: warrantyForm.sanPhamId,
-        moTaLoi: warrantyForm.moTaLoi,
-        khachHangId: user.id,
-      })
-      
-      setSuccess(`✅ Gửi yêu cầu thành công! Mã phiếu: ${result.maPhieu}`)
-      setWarrantyForm({ sanPhamId: '', moTaLoi: '' })
+
+      const contactInfo = {
+        hoTen: warrantyForm.hoTen.trim(),
+        soDienThoai: warrantyForm.soDienThoai.trim(),
+        email: warrantyForm.email.trim(),
+        maDonHang: warrantyForm.maDonHang.trim(),
+        soSerial: warrantyForm.soSerial.trim()
+      }
+
+      let result
+
+      // If there are actual File objects, build FormData and send multipart
+      const hasFiles = warrantyForm.attachments.some(a => a.file)
+      if (hasFiles) {
+        const formData = new FormData()
+        formData.append('sanPhamId', warrantyForm.sanPhamId)
+        formData.append('moTaLoi', warrantyForm.moTaLoi.trim())
+        formData.append('khachHangId', user.id)
+        formData.append('thongTinLienHe', JSON.stringify(contactInfo))
+
+        // Append any files under the field name 'attachments'
+        warrantyForm.attachments.forEach(a => {
+          if (a.file) {
+            formData.append('attachments', a.file, a.name)
+          }
+        })
+
+        // For compatibility, also include any non-file attachments (base64) as JSON
+        const nonFileAttachments = warrantyForm.attachments
+          .filter(a => !a.file && a.data)
+          .map(a => ({ tenTep: a.name, kieuNoiDung: a.type, duLieu: a.data, kichThuoc: a.size }))
+        if (nonFileAttachments.length > 0) {
+          formData.append('tepDinhKem', JSON.stringify(nonFileAttachments))
+        }
+
+        result = await customerAPI.submitWarrantyRequest(formData)
+      } else {
+        const attachmentsPayload = warrantyForm.attachments.map(file => ({
+          tenTep: file.name,
+          kieuNoiDung: file.type,
+          duLieu: file.data,
+          kichThuoc: file.size
+        }))
+
+        result = await customerAPI.submitWarrantyRequest({
+          sanPhamId: warrantyForm.sanPhamId,
+          moTaLoi: warrantyForm.moTaLoi.trim(),
+          khachHangId: user.id,
+          thongTinLienHe: contactInfo,
+          tepDinhKem: attachmentsPayload
+        })
+      }
+
+      const ticketCode = result?.data?.maPhieu || result?.maPhieu || ''
+      const confirmationMessage = result?.confirmation || 'Hệ thống sẽ gửi thông báo xác nhận qua email hoặc số điện thoại bạn cung cấp.'
+      setSuccess(`✅ Gửi yêu cầu thành công! Mã phiếu: ${ticketCode || 'Đang cập nhật'}. ${confirmationMessage}`)
+      setWarrantyForm(createInitialWarrantyForm())
       loadMyTickets()
       setTimeout(() => setActiveTab('myTickets'), 2000)
     } catch (err) {
@@ -151,8 +313,8 @@ export default function CustomerPage({ onLogout }) {
     try {
       setLoading(true)
       setError('')
-      // API call to submit rating (to be implemented in backend)
-      await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/customer/rate/${ratingForm.ticketId}`, {
+      
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/customer/rate/${ratingForm.ticketId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -164,11 +326,32 @@ export default function CustomerPage({ onLogout }) {
         })
       })
       
-      setSuccess('Cảm ơn bạn đã đánh giá!')
+      let data
+      try {
+        data = await response.json()
+      } catch (parseErr) {
+        // response was not JSON (often an HTML error page) - capture text for debugging
+        const text = await response.text().catch(() => '')
+        console.error('Non-JSON response from rating endpoint:', text)
+        setError(`Lỗi server: không nhận được JSON (status ${response.status}). Xem console để biết thêm chi tiết.`)
+        return
+      }
+
+      if (!response.ok) {
+        // Hiện lỗi từ backend
+        setError(data.message || 'Gửi đánh giá thất bại')
+        return
+      }
+      
+      setSuccess('Cảm ơn bạn đã gửi đánh giá!')
       setRatingForm({ ticketId: '', rating: 0, comment: '' })
-      loadMyTickets()
+      // Reload tickets để cập nhật trạng thái đã đánh giá
+      await loadMyTickets()
+      // Chuyển về tab danh sách phiếu
+      setActiveTab('myTickets')
     } catch (err) {
-      setError('Gửi đánh giá thất bại')
+      console.error('Rating error:', err)
+      setError('Gửi đánh giá thất bại: ' + err.message)
     } finally {
       setLoading(false)
     }
@@ -249,6 +432,77 @@ export default function CustomerPage({ onLogout }) {
 
   const completedTickets = myTickets.filter(t => t.trangThai === 'hoan_tat')
   const pendingTickets = myTickets.filter(t => t.trangThai !== 'hoan_tat' && t.trangThai !== 'tu_choi')
+  // Date & status filters for staff page (single date or range + status)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [statusFilter, setStatusFilter] = useState('') // '' = tất cả
+  const [ticketSearch, setTicketSearch] = useState('') // Search for tickets
+
+  const clearDateFilters = () => {
+    setDateFrom('')
+    setDateTo('')
+    setStatusFilter('')
+    setTicketSearch('')
+  }
+
+  // Apply date & status filtering to the tickets shown in staff view
+  const displayedTickets = myTickets.filter(t => {
+    // Search filter
+    if (ticketSearch) {
+      const q = ticketSearch.trim().toLowerCase()
+      const productName = (t.sanPhamId?.tenSP || '').toLowerCase()
+      const ticketCode = (t.maPhieu || '').toLowerCase()
+      const description = (t.moTaLoi || '').toLowerCase()
+      const productType = (t.sanPhamId?.loaiSanPham || '').toLowerCase()
+      if (!productName.includes(q) && !ticketCode.includes(q) && !description.includes(q) && !productType.includes(q)) {
+        return false
+      }
+    }
+    
+    // Status filter
+    if (statusFilter && t.trangThai !== statusFilter) return false
+    
+    // Date filter
+    if (!t.ngayTiepNhan) return true
+    const ticketDate = new Date(t.ngayTiepNhan)
+    if (dateFrom) {
+      const from = new Date(dateFrom)
+      // include day start
+      from.setHours(0,0,0,0)
+      if (ticketDate < from) return false
+    }
+    if (dateTo) {
+      const to = new Date(dateTo)
+      // include end of day
+      to.setHours(23,59,59,999)
+      if (ticketDate > to) return false
+    }
+    return true
+  })
+
+  // Product search for Product Warranty tab
+  const [pwSearch, setPwSearch] = useState('')
+
+  const displayedProducts = myProducts.filter(p => {
+    if (!p) return false
+    if (!pwSearch) return true
+    const q = pwSearch.trim().toLowerCase()
+    const name = (p.tenSP || '').toLowerCase()
+    const serial = (p.soSerial || '').toLowerCase()
+    const brand = (p.thuongHieu || '').toLowerCase()
+    return name.includes(q) || serial.includes(q) || brand.includes(q)
+  })
+
+  const getProductWarrantyStatus = (product) => {
+    try {
+      const purchaseDate = new Date(product.ngayMua)
+      const warrantyEndDate = new Date(purchaseDate.getTime() + (product.thoiHanBaoHanhThang || 0) * 30 * 24 * 60 * 60 * 1000)
+      const daysLeft = Math.ceil((warrantyEndDate - new Date()) / (1000 * 60 * 60 * 24))
+      return daysLeft > 30 ? 'valid' : daysLeft > 0 ? 'expiring' : 'expired'
+    } catch (e) {
+      return 'valid'
+    }
+  }
 
   return (
     <div className="customer-page">
@@ -331,7 +585,7 @@ export default function CustomerPage({ onLogout }) {
         {activeTab === 'overview' && (
           <div className="overview-section">
             <h2 className="section-title">📊 Tổng quan</h2>
-            
+
             <div className="stats-grid">
               <div className="stat-card blue">
                 <div className="stat-icon">📋</div>
@@ -409,61 +663,173 @@ export default function CustomerPage({ onLogout }) {
             <h2 className="section-title">➕ Gửi yêu cầu bảo hành</h2>
             
             <div className="form-container">
+              <div className="info-box">
+                <h4>📝 Hướng dẫn gửi yêu cầu</h4>
+                <ol>
+                  <li><strong>Bước 1:</strong> Điền thông tin liên hệ và chọn sản phẩm cần bảo hành.</li>
+                  <li><strong>Bước 2:</strong> Mô tả chi tiết lỗi, đính kèm hình ảnh/video minh họa (nếu có).</li>
+                  <li><strong>Bước 3:</strong> Nhấn "Gửi yêu cầu bảo hành" để hệ thống ghi nhận và tạo mã phiếu.</li>
+                </ol>
+                <p className="info-note">Sau khi gửi, bạn sẽ nhận được thông báo xác nhận qua email hoặc số điện thoại đã cung cấp.</p>
+              </div>
+
               <form onSubmit={handleSubmitWarrantyRequest} className="warranty-form">
-                <div className="form-group">
-                  <label>Chọn sản phẩm *</label>
-                  <select
-                    value={warrantyForm.sanPhamId}
-                    onChange={(e) => setWarrantyForm({...warrantyForm, sanPhamId: e.target.value})}
-                    required
-                  >
-                    <option value="">-- Chọn sản phẩm cần bảo hành --</option>
-                    {myProducts.map(product => (
-                      <option key={product._id} value={product._id}>
-                        {product.tenSP} - {product.loaiSanPham} ({product.soSerial})
-                      </option>
-                    ))}
-                  </select>
-                  {myProducts.length === 0 && (
-                    <p className="form-hint">⚠️ Bạn chưa có sản phẩm nào được đăng ký</p>
-                  )}
+                <div className="form-section">
+                  <h3 className="form-section-title">Điền thông tin yêu cầu</h3>
+                  <div className="form-grid">
+                    <div className="form-group">
+                      <label>Họ tên khách hàng *</label>
+                      <input
+                        type="text"
+                        value={warrantyForm.hoTen}
+                        onChange={(e) => updateWarrantyField('hoTen', e.target.value)}
+                        placeholder="Nhập họ tên đầy đủ"
+                        required
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Số điện thoại liên hệ *</label>
+                      <input
+                        type="tel"
+                        value={warrantyForm.soDienThoai}
+                        onChange={(e) => updateWarrantyField('soDienThoai', e.target.value)}
+                        placeholder="VD: 0901 234 567"
+                        required
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Email (nếu có)</label>
+                      <input
+                        type="email"
+                        value={warrantyForm.email}
+                        onChange={(e) => updateWarrantyField('email', e.target.value)}
+                        placeholder="VD: email@domain.com"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="form-group">
-                  <label>Mô tả sự cố *</label>
-                  <textarea
-                    value={warrantyForm.moTaLoi}
-                    onChange={(e) => setWarrantyForm({...warrantyForm, moTaLoi: e.target.value})}
-                    rows="6"
-                    placeholder="Mô tả chi tiết vấn đề của sản phẩm: triệu chứng, khi nào xảy ra, tần suất..."
-                    required
-                  />
-                  <p className="form-hint">💡 Mô tả càng chi tiết, quá trình xử lý càng nhanh</p>
+                <div className="form-section">
+                  <h3 className="form-section-title">Thông tin sản phẩm</h3>
+                  <div className="form-group">
+                    <label>Chọn sản phẩm *</label>
+                    <select
+                      value={warrantyForm.sanPhamId}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        const selectedProduct = myProducts.find(product => product._id === value)
+                        setWarrantyForm(prev => ({
+                          ...prev,
+                          sanPhamId: value,
+                          soSerial: selectedProduct?.soSerial || ''
+                        }))
+                      }}
+                      required
+                    >
+                      <option value="">-- Chọn sản phẩm cần bảo hành --</option>
+                      {myProducts.map(product => (
+                        <option key={product._id} value={product._id}>
+                          {product.tenSP} - {product.loaiSanPham} ({product.soSerial})
+                        </option>
+                      ))}
+                    </select>
+                    {myProducts.length === 0 && (
+                      <p className="form-hint">⚠️ Bạn chưa có sản phẩm nào được đăng ký</p>
+                    )}
+                  </div>
+                  <div className="form-grid">
+                    <div className="form-group">
+                      <label>Mã đơn hàng</label>
+                      <input
+                        type="text"
+                        value={warrantyForm.maDonHang}
+                        onChange={(e) => updateWarrantyField('maDonHang', e.target.value)}
+                        placeholder="VD: DH123456 (nếu có)"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Số serial sản phẩm *</label>
+                      <input
+                        type="text"
+                        value={warrantyForm.soSerial}
+                        onChange={(e) => updateWarrantyField('soSerial', e.target.value)}
+                        placeholder="VD: SN123456789"
+                        required={!warrantyForm.maDonHang}
+                      />
+                      <p className="form-hint">Nhập mã đơn hàng hoặc số serial in trên phiếu hoặc thân sản phẩm.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="form-section">
+                  <h3 className="form-section-title">Mô tả & minh họa</h3>
+                  <div className="form-group">
+                    <label>Mô tả sự cố *</label>
+                    <textarea
+                      value={warrantyForm.moTaLoi}
+                      onChange={(e) => updateWarrantyField('moTaLoi', e.target.value)}
+                      rows="6"
+                      placeholder="Mô tả chi tiết vấn đề của sản phẩm: triệu chứng, khi nào xảy ra, tần suất..."
+                      required
+                    />
+                    <p className="form-hint">Mô tả càng cụ thể, kỹ thuật viên càng dễ hỗ trợ bạn nhanh chóng.</p>
+                  </div>
+                  <div className="form-group">
+                    <label>Gửi kèm hình ảnh/video (nếu có)</label>
+                    <div className="attachment-upload">
+                      <input
+                        id="warranty-attachments"
+                        type="file"
+                        accept="image/*,video/*"
+                        multiple
+                        onChange={handleAttachmentChange}
+                      />
+                      <label htmlFor="warranty-attachments" className="upload-label">
+                        <span className="upload-icon">📎</span>
+                        <div className="upload-text">
+                          <strong>Thêm tệp minh họa</strong>
+                          <span>Hình ảnh hoặc video giúp kỹ thuật viên đánh giá nhanh hơn</span>
+                        </div>
+                      </label>
+                    </div>
+                    {warrantyForm.attachments.length > 0 && (
+                      <ul className="attachment-list">
+                        {warrantyForm.attachments.map((file, index) => (
+                          <li key={`${file.name}-${index}`}>
+                            <div className="attachment-info">
+                              <span className="attachment-name">{file.name}</span>
+                              <span className="attachment-meta">{file.type || 'Tệp đính kèm'} · {formatAttachmentSize(file.size)}</span>
+                            </div>
+                            <button
+                              type="button"
+                              className="attachment-remove"
+                              onClick={() => handleRemoveAttachment(index)}
+                              aria-label={`Xóa ${file.name}`}
+                            >
+                              ×
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <p className="form-hint">Tối đa {MAX_ATTACHMENT_COUNT} tệp, mỗi tệp ≤ {MAX_ATTACHMENT_SIZE_MB}MB.</p>
+                  </div>
                 </div>
 
                 <div className="form-actions">
                   <button type="submit" className="btn-primary" disabled={loading || myProducts.length === 0}>
-                    {loading ? '⏳ Đang gửi...' : '📤 Gửi yêu cầu'}
+                    {loading ? '⏳ Đang gửi...' : '📤 Gửi yêu cầu bảo hành'}
                   </button>
                   <button 
                     type="button" 
                     className="btn-secondary"
-                    onClick={() => setWarrantyForm({ sanPhamId: '', moTaLoi: '' })}
+                    onClick={() => setWarrantyForm(createInitialWarrantyForm())}
                   >
                     🔄 Làm mới
                   </button>
                 </div>
               </form>
-
-              <div className="info-box">
-                <h4>📝 Lưu ý khi gửi yêu cầu</h4>
-                <ul>
-                  <li>✓ Kiểm tra sản phẩm còn trong thời hạn bảo hành</li>
-                  <li>✓ Mô tả rõ ràng, chi tiết vấn đề gặp phải</li>
-                  <li>✓ Bạn sẽ nhận được mã phiếu để tra cứu</li>
-                  <li>✓ Thời gian xử lý: 3-7 ngày làm việc</li>
-                </ul>
-              </div>
+            
             </div>
           </div>
         )}
@@ -478,6 +844,48 @@ export default function CustomerPage({ onLogout }) {
               </button>
             </div>
 
+            <div className="search-box-container">
+              <div className="search-box">
+                <span className="search-icon">🔍</span>
+                <input 
+                  type="search" 
+                  placeholder="Tìm kiếm theo tên sản phẩm, mã phiếu, mô tả lỗi..."
+                  value={ticketSearch}
+                  onChange={(e) => setTicketSearch(e.target.value)}
+                />
+                {ticketSearch && (
+                  <button className="clear-search" onClick={() => setTicketSearch('')}>✕</button>
+                )}
+              </div>
+            </div>
+
+            <div className="tickets-filters">
+              <div className="filter-item">
+                <label>📅 Từ ngày</label>
+                <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+              </div>
+              <div className="filter-item">
+                <label>📅 Đến ngày</label>
+                <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+              </div>
+              <div className="filter-item">
+                <label>🏷️ Trạng thái</label>
+                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                  <option value="">-- Tất cả --</option>
+                  <option value="tiep_nhan">📥 Tiếp nhận</option>
+                  <option value="dang_kiem_tra">🔍 Đang kiểm tra</option>
+                  <option value="dang_sua">🔧 Đang sửa</option>
+                  <option value="hoan_tat">✅ Hoàn tất</option>
+                  <option value="tu_choi">❌ Từ chối</option>
+                </select>
+              </div>
+              <div className="filter-actions">
+                {(dateFrom || dateTo || statusFilter || ticketSearch) && (
+                  <button className="btn-clear-filters" onClick={(e) => { e.preventDefault(); clearDateFilters() }}>✕ Xóa bộ lọc</button>
+                )}
+              </div>
+            </div>
+
             {loading && <div className="loading-spinner">⏳ Đang tải...</div>}
 
             {!loading && myTickets.length === 0 && (
@@ -486,8 +894,15 @@ export default function CustomerPage({ onLogout }) {
               </div>
             )}
 
-            <div className="ticket-list">
-              {myTickets.map(ticket => (
+            {!loading && myTickets.length > 0 && displayedTickets.length === 0 && (
+              <div className="empty-state">
+                <p>🔍 Không tìm thấy phiếu bảo hành nào phù hợp với bộ lọc</p>
+                <button className="btn-secondary" onClick={clearDateFilters}>Xóa bộ lọc</button>
+              </div>
+            )}
+
+            <div className="ticket-list compact">
+              {displayedTickets.map(ticket => (
                 <div key={ticket._id} className="ticket-card">
                   <div className="ticket-card-header">
                     <div>
@@ -547,16 +962,21 @@ export default function CustomerPage({ onLogout }) {
                     >
                       🔍 Xem chi tiết
                     </button>
-                    {ticket.trangThai === 'hoan_tat' && (
+                    {ticket.trangThai === 'hoan_tat' && !ticket.qualityRating && (
                       <button 
                         className="btn-rate"
                         onClick={() => {
-                          setRatingForm({ ...ratingForm, ticketId: ticket._id })
+                          setRatingForm({ ticketId: ticket._id, rating: 0, comment: '' })
                           setActiveTab('rate')
                         }}
                       >
                         ⭐ Đánh giá
                       </button>
+                    )}
+                    {ticket.trangThai === 'hoan_tat' && ticket.qualityRating && (
+                      <span className="rating-badge">
+                        ⭐ Đã đánh giá: {ticket.qualityRating}/5
+                      </span>
                     )}
                   </div>
                 </div>
@@ -573,22 +993,34 @@ export default function CustomerPage({ onLogout }) {
             <div className="products-warranty-grid">
               {/* Products List */}
               <div className="products-list-panel">
-                <div className="panel-header">
-                  <h3>📦 Sản phẩm của bạn ({myProducts.length})</h3>
-                </div>
+                  <div className="panel-header">
+                    <h3>📦 Sản phẩm của bạn ({myProducts.length})</h3>
+                  </div>
+
+                  <div className="products-search">
+                    <div className="search-item">
+                      <label>Tìm kiếm sản phẩm / serial / thương hiệu</label>
+                      <input
+                        type="search"
+                        placeholder="Nhập tên sản phẩm, số serial hoặc thương hiệu..."
+                        value={pwSearch}
+                        onChange={(e) => setPwSearch(e.target.value)}
+                      />
+                    </div>
+                  </div>
 
                 {loading && <div className="loading-spinner">⏳ Đang tải...</div>}
 
                 {!loading && myProducts.length === 0 && (
                   <div className="empty-state">
-                    <p>📭 Bạn chưa có sản phẩm nào được đăng ký</p>
+                    <p>👤 Bạn chưa có sản phẩm nào được đăng ký</p>
                     <p className="empty-hint">Liên hệ cửa hàng để đăng ký sản phẩm của bạn</p>
                   </div>
                 )}
 
                 {!loading && myProducts.length > 0 && (
                   <div className="products-list">
-                    {myProducts.map(product => {
+                    {displayedProducts.map(product => {
                       const purchaseDate = new Date(product.ngayMua)
                       const warrantyEndDate = new Date(purchaseDate.getTime() + product.thoiHanBaoHanhThang * 30 * 24 * 60 * 60 * 1000)
                       const daysLeft = Math.ceil((warrantyEndDate - new Date()) / (1000 * 60 * 60 * 24))
@@ -624,7 +1056,7 @@ export default function CustomerPage({ onLogout }) {
                               {product.loaiSanPham === 'Vot' && '🏸'}
                               {product.loaiSanPham === 'Giay' && '👟'}
                               {product.loaiSanPham === 'Balo' && '🎒'}
-                              {product.loaiSanPham === 'PhuKien' && '🔧'}
+                              {product.loaiSanPham === 'PhuKien' && '🛍️'}
                             </div>
                             <div className="product-item-info">
                               <h4>{product.tenSP}</h4>
@@ -713,10 +1145,10 @@ export default function CustomerPage({ onLogout }) {
 
                       {/* Warranty Timeline */}
                       <div className="detail-section">
-                        <h4>📅 Thời gian bảo hành</h4>
+                        <h4>🕒 Thời gian bảo hành</h4>
                         <div className="warranty-timeline">
                           <div className="timeline-point">
-                            <div className="point-icon">🛒</div>
+                            <div className="point-icon">🔵</div>
                             <div className="point-info">
                               <span className="point-label">Ngày mua</span>
                               <span className="point-value">{productWarrantyInfo.purchaseDate.toLocaleDateString('vi-VN')}</span>
@@ -815,14 +1247,16 @@ export default function CustomerPage({ onLogout }) {
                         <button 
                           className="btn-primary btn-large"
                           onClick={() => {
-                            setWarrantyForm({ 
-                              ...warrantyForm, 
-                              sanPhamId: productWarrantyInfo.product._id 
+                            const freshForm = createInitialWarrantyForm()
+                            setWarrantyForm({
+                              ...freshForm,
+                              sanPhamId: productWarrantyInfo.product._id,
+                              soSerial: productWarrantyInfo.product.soSerial || freshForm.soSerial
                             })
                             setActiveTab('createRequest')
                           }}
                         >
-                          <span>📝</span> Tạo yêu cầu bảo hành
+                          <span>➕</span> Tạo yêu cầu bảo hành
                         </button>
                       )}
                       <button 
@@ -834,7 +1268,7 @@ export default function CustomerPage({ onLogout }) {
                           }
                         }}
                       >
-                        <span>�</span> Xem lịch sử chi tiết
+                        <span>🔍</span> Xem lịch sử chi tiết
                       </button>
                     </div>
                   </div>
@@ -875,100 +1309,199 @@ export default function CustomerPage({ onLogout }) {
                   </span>
                 </div>
 
-                <div className="result-grid">
-                  {trackingResult.sanPhamId && (
-                    <div className="result-card">
-                      <h4>🏸 Thông tin sản phẩm</h4>
-                      <div className="detail-grid">
-                        <div className="detail-item">
-                          <span className="label">Tên sản phẩm:</span>
-                          <span className="value">{trackingResult.sanPhamId.tenSP}</span>
-                        </div>
-                        <div className="detail-item">
-                          <span className="label">Loại:</span>
-                          <span className="value">{trackingResult.sanPhamId.loaiSanPham}</span>
-                        </div>
-                        <div className="detail-item">
-                          <span className="label">Thương hiệu:</span>
-                          <span className="value">{trackingResult.sanPhamId.thuongHieu || 'N/A'}</span>
-                        </div>
-                        <div className="detail-item">
-                          <span className="label">Số serial:</span>
-                          <span className="value">{trackingResult.sanPhamId.soSerial}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="result-card">
-                    <h4>📅 Thời gian</h4>
-                    <div className="detail-grid">
-                      <div className="detail-item">
-                        <span className="label">Ngày tiếp nhận:</span>
-                        <span className="value">
-                          {new Date(trackingResult.ngayTiepNhan).toLocaleDateString('vi-VN')}
-                        </span>
-                      </div>
-                      {trackingResult.ngayHoanTat && (
-                        <div className="detail-item">
-                          <span className="label">Ngày hoàn tất:</span>
-                          <span className="value">
-                            {new Date(trackingResult.ngayHoanTat).toLocaleDateString('vi-VN')}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {trackingResult.nhanVienTiepNhanId && (
-                    <div className="result-card">
-                      <h4>👤 Nhân viên xử lý</h4>
-                      <div className="detail-grid">
-                        <div className="detail-item">
-                          <span className="label">Họ tên:</span>
-                          <span className="value">{trackingResult.nhanVienTiepNhanId.hoTen}</span>
-                        </div>
-                        <div className="detail-item">
-                          <span className="label">Email:</span>
-                          <span className="value">{trackingResult.nhanVienTiepNhanId.email}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="result-card full-width">
-                    <h4>📝 Mô tả sự cố</h4>
-                    <p className="issue-description">{trackingResult.moTaLoi}</p>
-                  </div>
-
-                  {trackingResult.lichSuTrangThai && trackingResult.lichSuTrangThai.length > 0 && (
-                    <div className="result-card full-width">
-                      <h4>⏱️ Lịch sử trạng thái</h4>
-                      <div className="timeline">
-                        {trackingResult.lichSuTrangThai
-                          .sort((a, b) => new Date(a.thoiGian) - new Date(b.thoiGian))
-                          .map((item, index) => (
-                            <div key={index} className="timeline-item">
-                              <div className="timeline-marker">
-                                <div className={`marker-dot ${item.trangThai}`}></div>
-                                {index < trackingResult.lichSuTrangThai.length - 1 && (
-                                  <div className="marker-line"></div>
-                                )}
-                              </div>
-                              <div className="timeline-content">
-                                <div className="timeline-status">
-                                  {getStatusBadge(item.trangThai).icon} {getStatusBadge(item.trangThai).text}
-                                </div>
-                                <div className="timeline-time">
-                                  {new Date(item.thoiGian).toLocaleString('vi-VN')}
-                                </div>
-                              </div>
+                    <div className="result-grid">
+                      {/* Left: summary */}
+                      <aside className="result-summary">
+                        <div className="summary-card">
+                          <div className="summary-top">
+                            <div className="product-title">
+                              <h4>{trackingResult.sanPhamId?.tenSP || 'Sản phẩm'}</h4>
+                              <p className="product-serial">SN: {trackingResult.sanPhamId?.soSerial || '—'}</p>
                             </div>
-                          ))}
-                      </div>
+                            <div className={`status-block ${getStatusBadge(trackingResult.trangThai).class}`}>
+                              {getStatusBadge(trackingResult.trangThai).icon} {getStatusBadge(trackingResult.trangThai).text}
+                            </div>
+                          </div>
+
+                          <div className="summary-body">
+                            <div className="summary-row">
+                              <span>Loại</span>
+                              <strong>{trackingResult.sanPhamId?.loaiSanPham || 'N/A'}</strong>
+                            </div>
+                            <div className="summary-row">
+                              <span>Tiếp nhận</span>
+                              <strong>{new Date(trackingResult.ngayTiepNhan).toLocaleDateString('vi-VN')}</strong>
+                            </div>
+                            <div className="summary-row">
+                              <span>Hoàn tất</span>
+                              <strong>{trackingResult.ngayHoanTat ? new Date(trackingResult.ngayHoanTat).toLocaleDateString('vi-VN') : 'Đang xử lý'}</strong>
+                            </div>
+
+                            <div className="summary-progress">
+                              <div className="progress-label">Tiến độ</div>
+                              <div className="progress-bar small">
+                                <div className="progress-fill" style={{ width: `${getProgressPercentage(trackingResult.trangThai)}%` }}></div>
+                              </div>
+                              <div className="progress-percent">{getProgressPercentage(trackingResult.trangThai)}%</div>
+                            </div>
+
+                            <div className="summary-actions">
+                              <button className="btn-primary" onClick={() => {
+                                setWarrantyForm(prev => ({ ...prev, sanPhamId: trackingResult.sanPhamId?._id || '' }))
+                                setActiveTab('createRequest')
+                              }}>➕ Tạo yêu cầu</button>
+                              <button className="btn-secondary" onClick={() => setActiveTab('rate')}>✉️ Liên hệ</button>
+                            </div>
+                          </div>
+                        </div>
+                      </aside>
+
+                      {/* Right: details */}
+                      <section className="result-details">
+                        <div className="result-card">
+                          <h4>📝 Mô tả sự cố</h4>
+                          <p className="issue-description">{trackingResult.moTaLoi || 'Không có mô tả'}</p>
+                        </div>
+
+                        <div className="result-card">
+                          <h4>⏱️ Lịch sử trạng thái</h4>
+                          {trackingResult.lichSuTrangThai && trackingResult.lichSuTrangThai.length > 0 ? (
+                            <div className="timeline">
+                              {trackingResult.lichSuTrangThai
+                                .sort((a, b) => new Date(a.thoiGian) - new Date(b.thoiGian))
+                                .map((item, index) => (
+                                  <div key={index} className="timeline-item">
+                                    <div className="timeline-marker">
+                                      <div className={`marker-dot ${item.trangThai}`}></div>
+                                      {index < trackingResult.lichSuTrangThai.length - 1 && (
+                                        <div className="marker-line"></div>
+                                      )}
+                                    </div>
+                                    <div className="timeline-content">
+                                      <div className="timeline-status">
+                                        {getStatusBadge(item.trangThai).icon} {getStatusBadge(item.trangThai).text}
+                                      </div>
+                                      <div className="timeline-time">
+                                        {new Date(item.thoiGian).toLocaleString('vi-VN')}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                            </div>
+                          ) : (
+                            <p className="empty-hint">Chưa có lịch sử trạng thái.</p>
+                          )}
+                        </div>
+
+                        <div className="result-card">
+                          <h4>📎 Tệp đính kèm</h4>
+                          {(() => {
+                            const normalize = (p) => p && (p.startsWith('http') ? p : `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${p}`)
+
+                            const parts = []
+
+                            // 1) Render any hinhAnhLoi images first (these are primary thumbnails)
+                            if (trackingResult.hinhAnhLoi && trackingResult.hinhAnhLoi.length > 0) {
+                              parts.push(
+                                <div key="hinhAnhLoi" className="attachments-grid">
+                                  {trackingResult.hinhAnhLoi.map((p, idx) => {
+                                    const src = normalize(p)
+                                    return (
+                                      <a key={`img-${idx}`} href={src || '#'} className="attachment-thumb" target="_blank" rel="noreferrer">
+                                        <img src={src} alt={`Hình ${idx+1}`} className="attachment-thumb-img" />
+                                        <div className="attachment-info">
+                                          <div className="attachment-name">{`Hình ${idx+1}`}</div>
+                                        </div>
+                                      </a>
+                                    )
+                                  })}
+                                </div>
+                              )
+                            }
+
+                            // 2) Then render tepDinhKem but filter out any entries that are identical to hinhAnhLoi
+                            const imageSet = new Set((trackingResult.hinhAnhLoi || []).map(normalize))
+                            const isValidPath = (p) => !!p && (p.startsWith('http') || p.startsWith('/'))
+                            const uniqueFiles = (trackingResult.tepDinhKem || []).filter(f => {
+                              if (!isValidPath(f.duLieu)) return false
+                              const url = normalize(f.duLieu)
+                              return !imageSet.has(url)
+                            })
+
+                            if (uniqueFiles.length > 0) {
+                              parts.push(
+                                <div key="tepDinhKem" className="attachments-grid">
+                                  {uniqueFiles.map((f, i) => {
+                                    const src = f.duLieu && (f.duLieu.startsWith('http') ? f.duLieu : `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${f.duLieu}`)
+                                    const isImage = typeof f.kieuNoiDung === 'string' && f.kieuNoiDung.startsWith('image/')
+                                    return (
+                                      <a key={i} href={src || '#'} className="attachment-thumb" target="_blank" rel="noreferrer">
+                                        {isImage ? (
+                                          <img src={src} alt={f.tenTep || `Hình ${i+1}`} className="attachment-thumb-img" />
+                                        ) : (
+                                          <div className="attachment-file-icon">📎</div>
+                                        )}
+                                        <div className="attachment-info">
+                                          <div className="attachment-name">{f.tenTep || `Tệp ${i+1}`}</div>
+                                          <div className="attachment-meta">{f.kieuNoiDung || ''} · {formatAttachmentSize(f.kichThuoc)}</div>
+                                        </div>
+                                      </a>
+                                    )
+                                  })}
+                                </div>
+                              )
+                            }
+
+                            if (parts.length === 0) return <p className="empty-hint">Không có tệp đính kèm.</p>
+                            return parts
+                          })()}
+                        </div>
+
+                        {trackingResult.nhanVienTiepNhanId && (
+                          <div className="result-card">
+                            <h4>👷 Nhân viên xử lý</h4>
+                            <div className="detail-grid">
+                              <div className="detail-item">
+                                <span className="label">Họ tên:</span>
+                                <span className="value">{trackingResult.nhanVienTiepNhanId.hoTen}</span>
+                              </div>
+                              <div className="detail-item">
+                                <span className="label">Email:</span>
+                                <span className="value">{trackingResult.nhanVienTiepNhanId.email}</span>
+                              </div>
+                              {trackingResult.nhanVienTiepNhanId.soDienThoai && (
+                                <div className="detail-item">
+                                  <span className="label">SĐT:</span>
+                                  <span className="value">{trackingResult.nhanVienTiepNhanId.soDienThoai}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {trackingResult.qualityRating && (
+                          <div className="result-card rating-card">
+                            <h4>⭐ Đánh giá của khách hàng</h4>
+                            <div className="rating-display">
+                              <div className="rating-stars">
+                                {[1, 2, 3, 4, 5].map(star => (
+                                  <span key={star} className={star <= trackingResult.qualityRating ? 'star-filled' : 'star-empty'}>
+                                    ⭐
+                                  </span>
+                                ))}
+                                <span className="rating-score">{trackingResult.qualityRating}/5</span>
+                              </div>
+                              {trackingResult.qualityComments && (
+                                <div className="rating-comment">
+                                  <strong>💬 Nhận xét:</strong>
+                                  <p>{trackingResult.qualityComments}</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </section>
                     </div>
-                  )}
-                </div>
               </div>
             )}
           </div>
@@ -979,12 +1512,19 @@ export default function CustomerPage({ onLogout }) {
           <div className="rate-section">
             <h2 className="section-title">⭐ Đánh giá chất lượng</h2>
             
-            {completedTickets.length === 0 ? (
+            {completedTickets.filter(t => !t.qualityRating).length === 0 ? (
               <div className="empty-state">
-                <p>🎯 Bạn chưa có phiếu nào hoàn tất để đánh giá</p>
+                {completedTickets.length === 0 ? (
+                  <p>🎯 Bạn chưa có phiếu nào hoàn tất để đánh giá</p>
+                ) : (
+                  <p>✅ Bạn đã đánh giá tất cả các phiếu hoàn tất rồi</p>
+                )}
               </div>
             ) : (
               <div className="rating-container">
+                <div className="info-box">
+                  <p>💡 <strong>Lưu ý:</strong> Mỗi phiếu bảo hành chỉ được đánh giá một lần duy nhất. Hãy suy nghĩ kỹ trước khi gửi đánh giá.</p>
+                </div>
                 <form onSubmit={handleSubmitRating} className="rating-form">
                   <div className="form-group">
                     <label>Chọn phiếu đã hoàn tất</label>
@@ -994,7 +1534,7 @@ export default function CustomerPage({ onLogout }) {
                       required
                     >
                       <option value="">-- Chọn phiếu --</option>
-                      {completedTickets.map(ticket => (
+                      {completedTickets.filter(t => !t.qualityRating).map(ticket => (
                         <option key={ticket._id} value={ticket._id}>
                           {ticket.maPhieu} - {ticket.sanPhamId?.tenSP}
                         </option>
@@ -1042,15 +1582,6 @@ export default function CustomerPage({ onLogout }) {
                     </button>
                   </div>
                 </form>
-
-                <div className="info-box">
-                  <h4>💡 Tại sao nên đánh giá?</h4>
-                  <ul>
-                    <li>✓ Giúp chúng tôi cải thiện chất lượng dịch vụ</li>
-                    <li>✓ Chia sẻ trải nghiệm với cộng đồng</li>
-                    <li>✓ Nhận ưu đãi cho lần bảo hành tiếp theo</li>
-                  </ul>
-                </div>
               </div>
             )}
           </div>

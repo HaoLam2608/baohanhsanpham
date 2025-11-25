@@ -21,6 +21,8 @@ export default function EmployeePage({ onLogout }) {
   // Filter states
   const [filterStatus, setFilterStatus] = useState('all') // all, tiep_nhan, dang_kiem_tra, dang_sua, hoan_tat
   const [searchText, setSearchText] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   
   // Form states
   const [inspectionForm, setInspectionForm] = useState({
@@ -104,6 +106,26 @@ export default function EmployeePage({ onLogout }) {
         task.khachHangId?.hoTen?.toLowerCase().includes(search) ||
         task.moTaLoi?.toLowerCase().includes(search)
       )
+    }
+
+    // Filter by date range (based on ngayTiepNhan)
+    if (dateFrom) {
+      const from = new Date(dateFrom)
+      from.setHours(0,0,0,0)
+      filtered = filtered.filter(task => {
+        if (!task.ngayTiepNhan) return false
+        const t = new Date(task.ngayTiepNhan)
+        return t >= from
+      })
+    }
+    if (dateTo) {
+      const to = new Date(dateTo)
+      to.setHours(23,59,59,999)
+      filtered = filtered.filter(task => {
+        if (!task.ngayTiepNhan) return false
+        const t = new Date(task.ngayTiepNhan)
+        return t <= to
+      })
     }
 
     return filtered
@@ -261,6 +283,14 @@ export default function EmployeePage({ onLogout }) {
     if (days < 3) return 'high'
     if (days < 7) return 'medium'
     return 'low'
+  }
+
+  // Helper: format file size like CustomerPage
+  const formatAttachmentSize = (size) => {
+    if (size === undefined || size === null) return ''
+    if (size < 1024) return `${size} B`
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`
   }
 
   return (
@@ -455,6 +485,24 @@ export default function EmployeePage({ onLogout }) {
                     ✕
                   </button>
                 )}
+              </div>
+
+              <div className="filter-group">
+                <label>📅 Khoảng ngày:</label>
+                <div style={{display:'flex',gap:'0.6rem'}}>
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="filter-input"
+                  />
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="filter-input"
+                  />
+                </div>
               </div>
             </div>
 
@@ -745,81 +793,167 @@ export default function EmployeePage({ onLogout }) {
       {showDetailModal && selectedTicket && (
         <div className="modal-overlay" onClick={() => setShowDetailModal(false)}>
           <div className="modal-content modal-large" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>📄 Chi tiết phiếu bảo hành</h3>
-              <button className="modal-close" onClick={() => setShowDetailModal(false)}>✕</button>
+            <div className="modal-header-modern">
+              <div className="modal-title-section">
+                <span className="modal-icon">📋</span>
+                <div>
+                  <h3>Chi tiết phiếu bảo hành</h3>
+                  <p className="modal-subtitle">Mã phiếu: <strong>{selectedTicket.maPhieu}</strong></p>
+                </div>
+              </div>
+              <button className="modal-close-modern" onClick={() => setShowDetailModal(false)}>✕</button>
             </div>
             
-            <div className="modal-body">
-              <div className="detail-grid">
-                <div className="detail-section">
-                  <h4>Thông tin phiếu</h4>
-                  <div className="detail-row">
-                    <span className="detail-label">Mã phiếu:</span>
-                    <span className="detail-value">{selectedTicket.maPhieu}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span className="detail-label">Trạng thái:</span>
-                    <span className={`badge badge-${getStatusBadge(selectedTicket.trangThai).color}`}>
-                      {getStatusBadge(selectedTicket.trangThai).icon} {getStatusBadge(selectedTicket.trangThai).text}
-                    </span>
-                  </div>
-                  <div className="detail-row">
-                    <span className="detail-label">Ngày tiếp nhận:</span>
-                    <span className="detail-value">
-                      {new Date(selectedTicket.ngayTiepNhan).toLocaleDateString('vi-VN')}
-                    </span>
+            <div className="modal-body-modern">
+              {/* Status Card */}
+              <div className="status-highlight-card">
+                <div className="status-info">
+                  <span className="status-label">Trạng thái hiện tại</span>
+                  <span className={`status-badge badge-${getStatusBadge(selectedTicket.trangThai).color}`}>
+                    {getStatusBadge(selectedTicket.trangThai).icon} {getStatusBadge(selectedTicket.trangThai).text}
+                  </span>
+                </div>
+                <div className="timeline-info">
+                  <div className="timeline-item">
+                    <span className="timeline-icon">📥</span>
+                    <div>
+                      <span className="timeline-label">Tiếp nhận</span>
+                      <span className="timeline-date">{new Date(selectedTicket.ngayTiepNhan).toLocaleDateString('vi-VN')}</span>
+                    </div>
                   </div>
                   {selectedTicket.ngayHoanTat && (
-                    <div className="detail-row">
-                      <span className="detail-label">Ngày hoàn tất:</span>
-                      <span className="detail-value">
-                        {new Date(selectedTicket.ngayHoanTat).toLocaleDateString('vi-VN')}
-                      </span>
+                    <div className="timeline-item">
+                      <span className="timeline-icon">✅</span>
+                      <div>
+                        <span className="timeline-label">Hoàn tất</span>
+                        <span className="timeline-date">{new Date(selectedTicket.ngayHoanTat).toLocaleDateString('vi-VN')}</span>
+                      </div>
                     </div>
                   )}
                 </div>
+              </div>
 
-                <div className="detail-section">
-                  <h4>Thông tin sản phẩm</h4>
-                  <div className="detail-row">
-                    <span className="detail-label">Tên sản phẩm:</span>
-                    <span className="detail-value">{selectedTicket.sanPhamId?.tenSP || 'N/A'}</span>
+              <div className="detail-cards-grid">
+                {/* Product Card */}
+                <div className="info-card">
+                  <div className="info-card-header">
+                    <span className="info-icon">📦</span>
+                    <h4>Thông tin sản phẩm</h4>
                   </div>
-                  <div className="detail-row">
-                    <span className="detail-label">Loại:</span>
-                    <span className="detail-value">{selectedTicket.sanPhamId?.loaiSanPham || 'N/A'}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span className="detail-label">Thương hiệu:</span>
-                    <span className="detail-value">{selectedTicket.sanPhamId?.thuongHieu || 'N/A'}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span className="detail-label">Serial:</span>
-                    <span className="detail-value">{selectedTicket.sanPhamId?.soSerial || 'N/A'}</span>
+                  <div className="info-card-body">
+                    <div className="info-item">
+                      <span className="info-label">Tên sản phẩm</span>
+                      <span className="info-value">{selectedTicket.sanPhamId?.tenSP || 'N/A'}</span>
+                    </div>
+                    <div className="info-item">
+                      <span className="info-label">Loại sản phẩm</span>
+                      <span className="info-value">{selectedTicket.sanPhamId?.loaiSanPham || 'N/A'}</span>
+                    </div>
+                    <div className="info-item">
+                      <span className="info-label">Thương hiệu</span>
+                      <span className="info-value">{selectedTicket.sanPhamId?.thuongHieu || 'N/A'}</span>
+                    </div>
+                    <div className="info-item">
+                      <span className="info-label">Số Serial</span>
+                      <span className="info-value highlight">{selectedTicket.sanPhamId?.soSerial || 'N/A'}</span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="detail-section">
-                  <h4>Thông tin khách hàng</h4>
-                  <div className="detail-row">
-                    <span className="detail-label">Họ tên:</span>
-                    <span className="detail-value">{selectedTicket.khachHangId?.hoTen || 'N/A'}</span>
+                {/* Customer Card */}
+                <div className="info-card">
+                  <div className="info-card-header">
+                    <span className="info-icon">👤</span>
+                    <h4>Thông tin khách hàng</h4>
                   </div>
-                  <div className="detail-row">
-                    <span className="detail-label">Email:</span>
-                    <span className="detail-value">{selectedTicket.khachHangId?.email || 'N/A'}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span className="detail-label">SĐT:</span>
-                    <span className="detail-value">{selectedTicket.khachHangId?.soDienThoai || 'N/A'}</span>
+                  <div className="info-card-body">
+                    <div className="info-item">
+                      <span className="info-label">Họ và tên</span>
+                      <span className="info-value">{selectedTicket.khachHangId?.hoTen || 'N/A'}</span>
+                    </div>
+                    <div className="info-item">
+                      <span className="info-label">Email</span>
+                      <span className="info-value">{selectedTicket.khachHangId?.email || 'N/A'}</span>
+                    </div>
+                    <div className="info-item">
+                      <span className="info-label">Số điện thoại</span>
+                      <span className="info-value highlight">{selectedTicket.khachHangId?.soDienThoai || 'N/A'}</span>
+                    </div>
                   </div>
                 </div>
+              </div>
 
-                <div className="detail-section detail-full">
-                  <h4>Mô tả lỗi</h4>
-                  <p className="detail-description">{selectedTicket.moTaLoi}</p>
+              {/* Issue Description Card */}
+              <div className="issue-card">
+                <div className="issue-card-header">
+                  <span className="issue-icon">⚠️</span>
+                  <h4>Mô tả sự cố</h4>
                 </div>
+                <div className="issue-card-body">
+                  <p>{selectedTicket.moTaLoi}</p>
+                </div>
+              </div>
+
+              {/* Attachments / Images (hiển thị ảnh đã upload khi tạo phiếu) */}
+              <div className="issue-card">
+                <div className="issue-card-header">
+                  <span className="issue-icon">📎</span>
+                  <h4>Tệp đính kèm</h4>
+                </div>
+                <div className="issue-card-body">
+                  {/* Hình ảnh lỗi (mảng đường dẫn ngắn) */}
+                  {selectedTicket.hinhAnhLoi && selectedTicket.hinhAnhLoi.length > 0 && (
+                    <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:8}}>
+                      {selectedTicket.hinhAnhLoi.map((p, idx) => {
+                        const src = p && p.startsWith('http') ? p : `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${p}`
+                        return (
+                          <a key={idx} href={src} target="_blank" rel="noreferrer" style={{display:'inline-block'}}>
+                            <img src={src} alt={`Lỗi ${idx+1}`} style={{width:140,height:90,objectFit:'cover',borderRadius:6,border:'1px solid #e6eefc'}} />
+                          </a>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {/* Các tệp đính kèm chi tiết */}
+                  {selectedTicket.tepDinhKem && selectedTicket.tepDinhKem.length > 0 ? (
+                    <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                      {(() => {
+                        const normalize = (p) => p && (p.startsWith('http') ? p : `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${p}`)
+                        const imageSet = new Set((selectedTicket.hinhAnhLoi || []).map(normalize))
+                        const isValidPath = (p) => !!p && (p.startsWith('http') || p.startsWith('/'))
+                        const uniqueFiles = (selectedTicket.tepDinhKem || []).filter(f => {
+                          if (!isValidPath(f.duLieu)) return false
+                          const url = normalize(f.duLieu)
+                          return !imageSet.has(url)
+                        })
+
+                        return uniqueFiles.map((f, i) => {
+                          const src = f.duLieu && (f.duLieu.startsWith('http') ? f.duLieu : `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${f.duLieu}`)
+                          const isImage = typeof f.kieuNoiDung === 'string' && f.kieuNoiDung.startsWith('image/')
+                          return (
+                            <div key={i} style={{display:'flex',alignItems:'center',gap:10}}>
+                              {isImage ? (
+                                <a href={src} target="_blank" rel="noreferrer">
+                                  <img src={src} alt={f.tenTep || `Tệp ${i+1}`} style={{width:120,height:80,objectFit:'cover',borderRadius:6,border:'1px solid #eef4ff'}} />
+                                </a>
+                              ) : (
+                                <div style={{width:48,height:48,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:6,background:'#fff',border:'1px solid #f0f3f7'}}>📎</div>
+                              )}
+                              <div style={{display:'flex',flexDirection:'column'}}>
+                                <a href={src} target="_blank" rel="noreferrer" style={{fontWeight:700,color:'#0b4ed8'}}>{f.tenTep || `Tệp ${i+1}`}</a>
+                                <div style={{fontSize:'0.85rem',color:'#64748b'}}>{f.kieuNoiDung || ''} · {f.kichThuoc ? formatAttachmentSize(f.kichThuoc) : ''}</div>
+                              </div>
+                            </div>
+                          )
+                        })
+                      })()}
+                    </div>
+                  ) : (
+                    <div style={{color:'#64748b'}}>Không có tệp đính kèm.</div>
+                  )}
+                </div>
+              </div>
 
                 {/* Quản lý sửa chữa - chỉ hiện khi đang xử lý */}
                 {(selectedTicket.trangThai === 'dang_kiem_tra' || selectedTicket.trangThai === 'dang_sua') && (
@@ -913,7 +1047,6 @@ export default function EmployeePage({ onLogout }) {
                     </div>
                   </div>
                 )}
-              </div>
 
               <div className="modal-actions">
                 <button className="btn-secondary" onClick={() => {

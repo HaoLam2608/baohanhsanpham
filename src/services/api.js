@@ -49,14 +49,36 @@ export const authAPI = {
 
 // ============ CUSTOMER API ============
 export const customerAPI = {
-  // Gửi yêu cầu bảo hành
+  // Gửi yêu cầu bảo hành (supports FormData + JSON fallback)
   submitWarrantyRequest: async (requestData) => {
-    const response = await fetch(`${API_BASE_URL}/customer/request`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify(requestData),
-    })
-    return handleResponse(response)
+    const url = `${API_BASE_URL}/customer/request`
+    const headers = getAuthHeaders()
+    const options = { method: 'POST', headers: headers }
+
+    if (requestData instanceof FormData) {
+      // When sending FormData, do not set Content-Type header (browser will add)
+      delete options.headers['Content-Type']
+      options.body = requestData
+    } else {
+      options.headers['Content-Type'] = 'application/json'
+      options.body = JSON.stringify(requestData)
+    }
+
+    const response = await fetch(url, options)
+    // handleResponse expects JSON; try to parse, otherwise return text wrapper
+    const text = await response.text()
+    try {
+      const data = JSON.parse(text)
+      if (!response.ok) {
+        throw new Error(data.message || 'API request failed')
+      }
+      return data
+    } catch (e) {
+      if (!response.ok) {
+        throw new Error(text || 'API request failed')
+      }
+      return { message: text }
+    }
   },
 
   // Theo dõi phiếu bảo hành
