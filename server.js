@@ -9,8 +9,15 @@ connectDB();
 
 app.use(cors());
 app.use(morgan('dev'));
-app.use(express.json());
+// Allow larger JSON payloads because frontend may send base64-encoded attachments.
+// In production it's better to use multipart/form-data + multer for file uploads
+// instead of embedding base64 in JSON. Increase the limit temporarily to handle
+// larger test uploads.
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use('/uploads', express.static('src/uploads'));
+// Also serve uploaded files under /api/uploads for compatibility
+app.use('/api/uploads', express.static('src/uploads'));
 
 // Routes
 app.use('/api/auth', require('./src/routes/auth.routes'));
@@ -23,6 +30,8 @@ app.use('/api/nhanvien', require('./src/routes/nhanvien.routes'));
 app.use('/api/customer', require('./src/routes/customer.routes'));
 app.use('/api/manager', require('./src/routes/manager.routes'));
 app.use('/api/employee', require('./src/routes/employee.routes'));
+// User profile routes (GET/PUT /api/user/profile)
+app.use('/api/user', require('./src/routes/user.routes'));
 
 app.use((err, req, res, next) => {
     console.error(err);
