@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect } from 'react'
 import { customerAPI, storage, generalAPI } from '../services/api'
 import '../styles/CustomerPage.css'
+import SettingsPage from './SettingsPage'
 
 export default function CustomerPage({ onLogout }) {
   const user = storage.getUser()
@@ -555,6 +556,13 @@ export default function CustomerPage({ onLogout }) {
         >
           <span className="tab-icon">🔍</span>
           <span>Tra cứu phiếu</span>
+        </button>
+        <button
+          className={`nav-tab ${activeTab === 'settings' ? 'active' : ''}`}
+          onClick={() => setActiveTab('settings')}
+        >
+          <span className="tab-icon">⚙️</span>
+          <span>Cài đặt</span>
         </button>
         <button
           className={`nav-tab ${activeTab === 'rate' ? 'active' : ''}`}
@@ -1504,6 +1512,14 @@ export default function CustomerPage({ onLogout }) {
                     </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Settings Tab */}
+        {activeTab === 'settings' && (
+          <div className="settings-section">
+            <h2 className="section-title">⚙️ Cài đặt tài khoản</h2>
+            <SettingsPage onSaved={(u) => { /* refresh user if needed */ }} />
           </div>
         )}
 

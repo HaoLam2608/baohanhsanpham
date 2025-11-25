@@ -322,3 +322,44 @@ export const storage = {
   removeUser: () => localStorage.removeItem('user'),
   clear: () => localStorage.clear(),
 }
+
+// ============ USER API (profile) ============
+export const userAPI = {
+  getProfile: async () => {
+    const response = await fetch(`${API_BASE_URL}/user/profile`, {
+      headers: getAuthHeaders(),
+    })
+    const text = await response.text()
+    try {
+      const data = JSON.parse(text)
+      if (!response.ok) throw new Error(data.message || 'API request failed')
+      return data
+    } catch (e) {
+      if (!response.ok) {
+        // Return the HTML/text error for debugging
+        throw new Error(text || `Request failed (status ${response.status})`)
+      }
+      // If response is plain text but OK, return it wrapped
+      return { data: text }
+    }
+  },
+
+  updateProfile: async (profileData) => {
+    const response = await fetch(`${API_BASE_URL}/user/profile`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(profileData),
+    })
+    const text = await response.text()
+    try {
+      const data = JSON.parse(text)
+      if (!response.ok) throw new Error(data.message || 'API request failed')
+      return data
+    } catch (e) {
+      if (!response.ok) {
+        throw new Error(text || `Request failed (status ${response.status})`)
+      }
+      return { data: text }
+    }
+  }
+}

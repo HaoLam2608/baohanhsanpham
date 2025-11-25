@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { employeeAPI, storage } from '../services/api'
 import '../styles/EmployeePage.css'
+import SettingsPage from './SettingsPage'
 
 export default function EmployeePage({ onLogout }) {
   const [activeTab, setActiveTab] = useState('dashboard')
@@ -324,6 +325,13 @@ export default function EmployeePage({ onLogout }) {
           <span className="tab-icon">📋</span>
           <span>Công việc của tôi</span>
         </button>
+        <button
+          className={`nav-tab ${activeTab === 'settings' ? 'active' : ''}`}
+          onClick={() => setActiveTab('settings')}
+        >
+          <span className="tab-icon">⚙️</span>
+          <span>Cài đặt</span>
+        </button>
       </nav>
 
       {/* Messages */}
@@ -342,6 +350,12 @@ export default function EmployeePage({ onLogout }) {
 
       {/* Content */}
       <main className="employee-content">
+        {activeTab === 'settings' && (
+          <div className="settings-section">
+            <h2 className="section-title">⚙️ Cài đặt tài khoản</h2>
+            <SettingsPage onSaved={(u) => {}} />
+          </div>
+        )}
         {/* Dashboard Tab */}
         {activeTab === 'dashboard' && (
           <div className="dashboard-section">
