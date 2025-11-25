@@ -5,6 +5,7 @@ const KhachHangSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     matKhau: { type: String }, // Cho phép khách hàng đăng nhập
     soDienThoai: { type: String },
+    avatar: { type: String },
     diaChi: { type: String },
     ngayTao: { type: Date, default: Date.now },
 });

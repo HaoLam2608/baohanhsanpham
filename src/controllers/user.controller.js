@@ -1,6 +1,7 @@
 const KhachHang = require('../models/khachhang')
 const NhanVien = require('../models/nhanvien')
 const bcrypt = require('bcryptjs')
+const path = require('path')
 
 exports.getProfile = async (req, res) => {
   try {
@@ -47,6 +48,32 @@ exports.updateProfile = async (req, res) => {
     res.json({ data: out })
   } catch (err) {
     console.error('Update profile error', err)
+    res.status(500).json({ message: 'Lỗi server', error: err.message })
+  }
+}
+
+// Upload avatar and update user.avatar to saved path
+exports.uploadAvatar = async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: 'Không có tệp tải lên' })
+    const { id, role } = req.user || {}
+    if (!id) return res.status(401).json({ message: 'Không xác định người dùng' })
+
+    const filename = req.file.filename
+    // store path relative to server static mount
+    const avatarPath = `/uploads/${filename}`
+
+    const Model = role === 'khachhang' ? KhachHang : NhanVien
+    const user = await Model.findById(id)
+    if (!user) return res.status(404).json({ message: 'Người dùng không tồn tại' })
+
+    user.avatar = avatarPath
+    await user.save()
+    const out = user.toObject()
+    delete out.matKhau
+    res.json({ data: out })
+  } catch (err) {
+    console.error('Upload avatar error', err)
     res.status(500).json({ message: 'Lỗi server', error: err.message })
   }
 }

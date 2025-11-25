@@ -5,6 +5,8 @@ const NhanVienSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     matKhau: { type: String, required: true },
     chucVu: { type: String, default: 'nhanvien' },
+    soDienThoai: { type: String },
+    avatar: { type: String },
     createdAt: { type: Date, default: Date.now }
 });
 
