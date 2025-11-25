@@ -1,0 +1,38 @@
+name: Scheduled DB Backup
+
+on:
+  schedule:
+    # daily at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify Docker
+        run: docker --version
+
+      - name: Run mongodump inside mongo container
+        env:
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+        run: |
+          set -eux
+          ts=$(date -u +"%Y%m%d-%H%M%S")
+          mkdir -p "$RUNNER_TEMP"
+          echo "Using MONGO_URI: ${MONGO_URI:0:20}..."
+          docker run --rm -v "$RUNNER_TEMP":/backup -e MONGO_URI="$MONGO_URI" mongo:6.0 bash -lc \
+            "mongodump --uri=\"$MONGO_URI\" --archive=/backup/db-$ts.archive.gz --gzip"
+          echo "Backup saved to $RUNNER_TEMP/db-$ts.archive.gz"
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}-${{ github.run_number }}
+          path: ${{ runner.temp }}/db-*.archive.gz
+
+      - name: Done
+        run: echo "Backup workflow finished"

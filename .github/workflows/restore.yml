@@ -1,0 +1,41 @@
+name: Restore DB from Artifact (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_name:
+        description: 'Exact artifact name to download (from backup workflow). Example: db-backup-12345-1'
+        required: true
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download specified artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ github.event.inputs.artifact_name }}
+          path: ${{ runner.temp }}/restore
+
+      - name: List downloaded files
+        run: ls -la ${{ runner.temp }}/restore || true
+
+      - name: Restore using mongorestore inside mongo container
+        env:
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+        run: |
+          set -eux
+          archive=$(ls $RUNNER_TEMP/restore/*.archive.gz | head -n1)
+          if [ -z "$archive" ]; then
+            echo "No archive found in $RUNNER_TEMP/restore"
+            exit 1
+          fi
+          echo "Restoring from $archive"
+          docker run --rm -v "$RUNNER_TEMP":/backup -e MONGO_URI="$MONGO_URI" mongo:6.0 bash -lc \
+            "mongorestore --uri=\"$MONGO_URI\" --archive=/backup/$(basename $archive) --gzip --drop"
+
+      - name: Done
+        run: echo "Restore workflow finished"
