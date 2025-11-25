@@ -97,13 +97,28 @@ export default function SettingsPage({ onSaved }) {
 
   const initials = (name) => (name ? name.split(' ').map(n => n[0]).slice(0,2).join('').toUpperCase() : 'U')
 
+  const normalizeAvatar = (p) => {
+    if (!p) return null
+    // blob: preview
+    if (p.startsWith('blob:')) return p
+    // already absolute URL
+    if (p.startsWith('http://') || p.startsWith('https://')) return p
+    // relative path like /uploads/xxx or /api/uploads/xxx -> prefix with API base (which includes /api)
+    const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+    // if p already starts with /api, remove leading slash to avoid double
+    if (p.startsWith('/api')) return `${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}${p.slice(4)}`
+    return `${API_BASE}${p}`
+  }
+
+  const displayAvatar = avatarPreview ? normalizeAvatar(avatarPreview) : (user?.avatar ? normalizeAvatar(user.avatar) : null)
+
   return (
     <div className="settings-page card">
       <div className="settings-grid">
         <aside className="settings-aside">
           <div className="avatar-box">
-            {avatarPreview ? (
-              <img src={avatarPreview} alt="avatar" className="avatar-img" />
+            {displayAvatar ? (
+              <img src={displayAvatar} alt="avatar" className="avatar-img" />
             ) : (
               <div className="avatar-fallback">{initials(user?.hoTen)}</div>
             )}
