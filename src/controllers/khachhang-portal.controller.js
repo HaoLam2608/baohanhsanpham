@@ -70,6 +70,9 @@ exports.trackWarrantyTicket = async (req, res) => {
             moTaLoi: ticket.moTaLoi,
             loaiLoiDuDoan: ticket.loaiLoiDuDoan,
             lichSuTrangThai: ticket.lichSuTrangThai,
+            // Include attachments so frontend can display files
+            tepDinhKem: ticket.tepDinhKem || [],
+            hinhAnhLoi: ticket.hinhAnhLoi || [],
             qualityRating: ticket.qualityRating,
             qualityComments: ticket.qualityComments
         });
@@ -82,9 +85,84 @@ exports.trackWarrantyTicket = async (req, res) => {
 // Gửi yêu cầu bảo hành
 exports.submitWarrantyRequest = async (req, res) => {
     try {
-        const { khachHangId, sanPhamId, moTaLoi, loaiLoiDuDoan, hinhAnhLoi } = req.body;
+        // Support both JSON body (old) and multipart/form-data (new)
+        // For multipart, files are available in req.files and other fields in req.body
+        let {
+            khachHangId,
+            sanPhamId,
+            moTaLoi,
+            loaiLoiDuDoan,
+            thongTinLienHe = '{}',
+            tepDinhKem = []
+        } = req.body || {};
 
-        // Tạo mã phiếu
+        // If thongTinLienHe sent as JSON string (from FormData), parse it
+        if (typeof thongTinLienHe === 'string') {
+            try {
+                thongTinLienHe = JSON.parse(thongTinLienHe);
+            } catch (e) {
+                // ignore parse error, keep as string
+            }
+        }
+
+        // Build attachments from uploaded files (if any)
+        const uploadedFiles = Array.isArray(req.files) ? req.files : [];
+        const uploadedAttachments = uploadedFiles.map(f => ({
+            tenTep: f.originalname,
+            kieuNoiDung: f.mimetype,
+            duLieu: `/uploads/${f.filename}`,
+            kichThuoc: f.size
+        }));
+
+        // If tepDinhKem provided in body (JSON), try to parse/merge
+        let bodyAttachments = [];
+        if (typeof tepDinhKem === 'string') {
+            try {
+                bodyAttachments = JSON.parse(tepDinhKem);
+            } catch (e) {
+                bodyAttachments = [];
+            }
+        } else if (Array.isArray(tepDinhKem)) {
+            bodyAttachments = tepDinhKem;
+        }
+
+        const allAttachments = [...uploadedAttachments, ...bodyAttachments];
+
+        if (!khachHangId || !sanPhamId || !moTaLoi) {
+            return res.status(400).json({ message: 'Thiếu thông tin bắt buộc' });
+        }
+
+        const {
+            hoTen = '',
+            soDienThoai = '',
+            email = '',
+            maDonHang = '',
+            soSerial = ''
+        } = thongTinLienHe || {};
+
+        if (!hoTen.trim() || !soDienThoai.trim()) {
+            return res.status(400).json({ message: 'Vui lòng cung cấp họ tên và số điện thoại liên hệ' });
+        }
+
+        if (!maDonHang.trim() && !soSerial.trim()) {
+            return res.status(400).json({ message: 'Vui lòng nhập mã đơn hàng hoặc số serial sản phẩm' });
+        }
+
+        const maxAttachments = 5;
+        const sanitizedAttachments = allAttachments
+            .filter((item) => item && item.tenTep && item.duLieu)
+            .slice(0, maxAttachments)
+            .map((item) => ({
+                tenTep: item.tenTep,
+                kieuNoiDung: item.kieuNoiDung,
+                duLieu: item.duLieu,
+                kichThuoc: item.kichThuoc
+            }));
+
+        const attachmentImages = sanitizedAttachments
+            .filter((item) => typeof item.kieuNoiDung === 'string' && item.kieuNoiDung.startsWith('image/'))
+            .map((item) => item.duLieu);
+
         const maPhieu = `BH-${Date.now()}`;
 
         const newTicket = new PhieuBaoHanh({
@@ -95,7 +173,15 @@ exports.submitWarrantyRequest = async (req, res) => {
             loaiLoiDuDoan,
             trangThai: 'tiep_nhan',
             ngayTiepNhan: new Date(),
-            hinhAnhLoi,
+            hinhAnhLoi: attachmentImages.slice(0, maxAttachments),
+            thongTinLienHe: {
+                hoTen: hoTen.trim(),
+                soDienThoai: soDienThoai.trim(),
+                email: email.trim() || undefined,
+                maDonHang: maDonHang.trim() || undefined,
+                soSerial: soSerial.trim() || undefined
+            },
+            tepDinhKem: sanitizedAttachments,
             lichSuTrangThai: [{
                 trangThai: 'tiep_nhan',
                 thoiGian: new Date()
@@ -103,11 +189,14 @@ exports.submitWarrantyRequest = async (req, res) => {
         });
 
         await newTicket.save();
+
         res.status(201).json({
             message: 'Gửi yêu cầu bảo hành thành công',
+            confirmation: 'Hệ thống đã ghi nhận yêu cầu và sẽ gửi thông báo xác nhận qua email hoặc số điện thoại bạn cung cấp.',
             data: newTicket
         });
     } catch (err) {
+        console.error('Error in submitWarrantyRequest:', err);
         res.status(500).json({ message: 'Lỗi server', error: err.message });
     }
 };
@@ -138,6 +227,56 @@ exports.getWarrantyRecommendations = async (req, res) => {
 
         res.json({ recommendations });
     } catch (err) {
+        res.status(500).json({ message: 'Lỗi server', error: err.message });
+    }
+};
+
+// Khách hàng gửi đánh giá cho phiếu bảo hành
+exports.submitRating = async (req, res) => {
+    try {
+        const { ticketId } = req.params;
+        const { rating, comment } = req.body;
+
+        // Validate rating
+        if (!rating || rating < 1 || rating > 5) {
+            return res.status(400).json({ message: 'Đánh giá phải từ 1 đến 5 sao' });
+        }
+
+        // Tìm phiếu bảo hành
+        const ticket = await PhieuBaoHanh.findById(ticketId);
+        if (!ticket) {
+            return res.status(404).json({ message: 'Không tìm thấy phiếu bảo hành' });
+        }
+
+        // Kiểm tra phiếu đã hoàn tất chưa
+        if (ticket.trangThai !== 'hoan_tat') {
+            return res.status(400).json({ message: 'Chỉ có thể đánh giá phiếu đã hoàn tất' });
+        }
+
+        // Kiểm tra đã đánh giá chưa
+        if (ticket.qualityRating) {
+            return res.status(400).json({ message: 'Phiếu bảo hành này đã được đánh giá rồi. Mỗi phiếu chỉ được đánh giá một lần.' });
+        }
+
+        // Kiểm tra quyền (chỉ khách hàng của phiếu mới được đánh giá)
+        if (req.user && req.user.id && ticket.khachHangId.toString() !== req.user.id) {
+            return res.status(403).json({ message: 'Bạn không có quyền đánh giá phiếu này' });
+        }
+
+        // Cập nhật đánh giá
+        ticket.qualityRating = rating;
+        ticket.qualityComments = comment || '';
+        await ticket.save();
+
+        res.json({ 
+            message: 'Cảm ơn bạn đã gửi đánh giá!', 
+            data: {
+                qualityRating: ticket.qualityRating,
+                qualityComments: ticket.qualityComments
+            }
+        });
+    } catch (err) {
+        console.error('❌ Error submitting rating:', err);
         res.status(500).json({ message: 'Lỗi server', error: err.message });
     }
 };

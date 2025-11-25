@@ -10,6 +10,19 @@ const PhieuSchema = new mongoose.Schema({
     moTaLoi: { type: String },
     loaiLoiDuDoan: { type: String, enum: ['loi_nsx', 'loi_su_dung', 'hong_tu_nhien'] },
     hinhAnhLoi: [String],
+    thongTinLienHe: {
+        hoTen: { type: String },
+        soDienThoai: { type: String },
+        email: { type: String },
+        maDonHang: { type: String },
+        soSerial: { type: String }
+    },
+    tepDinhKem: [{
+        tenTep: String,
+        kieuNoiDung: String,
+        duLieu: String,
+        kichThuoc: Number
+    }],
     
     // Thông tin xử lý (gộp từ ChiTietBaoHanh)
     ketQuaKiemTra: { type: String },

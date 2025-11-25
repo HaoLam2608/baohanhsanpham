@@ -207,6 +207,11 @@ exports.qualityAssessment = async (req, res) => {
         const ticket = await PhieuBaoHanh.findById(ticketId);
         if (!ticket) return res.status(404).json({ message: 'Phiếu không tồn tại' });
 
+        // Check if ticket already has a rating
+        if (ticket.qualityRating) {
+            return res.status(400).json({ message: 'Phiếu bảo hành này đã được đánh giá rồi' });
+        }
+
         ticket.qualityRating = rating;
         ticket.qualityComments = comments;
 

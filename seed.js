@@ -180,7 +180,7 @@ async function seedDatabase() {
         khachHangId: sanPham.khachHangId,
         nhanVienTiepNhanId: nhanVien._id,
         moTaLoi: issue,
-        loaiLoiDuDoan: Math.random() > 0.5 ? 'Lỗi NSX' : 'Lỗi người dùng',
+        loaiLoiDuDoan: Math.random() > 0.5 ? 'loi_nsx' : 'loi_su_dung',
         trangThai: status,
         ngayTiepNhan: ngayTiepNhan,
         hinhAnhLoi: [],
