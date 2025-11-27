@@ -25,19 +25,19 @@ export default function CustomerPage({ onLogout }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  
+
   // State data
   const [myTickets, setMyTickets] = useState([])
   const [myProducts, setMyProducts] = useState([])
   const [trackingResult, setTrackingResult] = useState(null)
   const [selectedTicket, setSelectedTicket] = useState(null)
   const [productWarrantyInfo, setProductWarrantyInfo] = useState(null)
-  
+
   // Form states
   const [ticketCode, setTicketCode] = useState('')
   const [productSerial, setProductSerial] = useState('')
   const [warrantyForm, setWarrantyForm] = useState(createInitialWarrantyForm)
-  
+
   const [ratingForm, setRatingForm] = useState({
     ticketId: '',
     rating: 0,
@@ -90,11 +90,11 @@ export default function CustomerPage({ onLogout }) {
     try {
       setLoading(true)
       setError('')
-      
+
       const data = await generalAPI.getProducts()
       console.log('📦 All products from API:', data)
       console.log('👤 Current user ID:', user.id)
-      
+
       // Filter products belonging to this customer
       // API populates khachHangId, so it might be an object with _id or just the ID string
       const customerProducts = data.filter(p => {
@@ -102,18 +102,18 @@ export default function CustomerPage({ onLogout }) {
           console.log('⚠️ Product has no khachHangId:', p)
           return false
         }
-        
+
         // Check if khachHangId is populated (object) or just ID (string)
         const productCustomerId = p.khachHangId._id || p.khachHangId
         const match = String(productCustomerId) === String(user.id)
-        
+
         if (match) {
           console.log('✅ Match found:', p.tenSP, productCustomerId)
         }
-        
+
         return match
       })
-      
+
       console.log('🎯 Filtered customer products:', customerProducts)
       setMyProducts(customerProducts)
     } catch (err) {
@@ -183,7 +183,7 @@ export default function CustomerPage({ onLogout }) {
     setWarrantyForm(prev => {
       const removed = prev.attachments[index]
       if (removed && removed.preview) {
-        try { URL.revokeObjectURL(removed.preview) } catch (e) {}
+        try { URL.revokeObjectURL(removed.preview) } catch (e) { }
       }
       return {
         ...prev,
@@ -282,6 +282,54 @@ export default function CustomerPage({ onLogout }) {
     }
   }
 
+  const handlePayment = async (ticketId) => {
+    if (!window.confirm('Bạn có chắc chắn muốn thanh toán chi phí này không?')) return
+
+    try {
+      setLoading(true)
+      setError('')
+
+      const response = await customerAPI.processPayment(ticketId)
+      setSuccess('Thanh toán thành công!')
+
+      // Refresh ticket data
+      const data = await customerAPI.trackTicket(ticketCode.trim())
+      setTrackingResult(data)
+    } catch (err) {
+      setError(err.message || 'Thanh toán thất bại')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleViewPayment = async (code) => {
+    setTicketCode(code)
+    setActiveTab('track')
+
+    try {
+      setLoading(true)
+      setError('')
+      setTrackingResult(null)
+
+      const data = await customerAPI.trackTicket(code)
+      setTrackingResult(data)
+
+      // Scroll to payment section after a short delay to ensure rendering
+      setTimeout(() => {
+        const paymentSection = document.querySelector('.payment-info')
+        if (paymentSection) {
+          paymentSection.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          // Add highlight effect
+          paymentSection.style.animation = 'highlight 1s ease'
+        }
+      }, 500)
+    } catch (err) {
+      setError(err.message || 'Không tìm thấy phiếu bảo hành')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleTrackTicket = async (e) => {
     e.preventDefault()
     if (!ticketCode.trim()) {
@@ -293,7 +341,7 @@ export default function CustomerPage({ onLogout }) {
       setLoading(true)
       setError('')
       setTrackingResult(null)
-      
+
       const data = await customerAPI.trackTicket(ticketCode.trim())
       setTrackingResult(data)
       setSuccess('Tìm thấy phiếu bảo hành!')
@@ -314,7 +362,7 @@ export default function CustomerPage({ onLogout }) {
     try {
       setLoading(true)
       setError('')
-      
+
       const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/customer/rate/${ratingForm.ticketId}`, {
         method: 'POST',
         headers: {
@@ -326,7 +374,7 @@ export default function CustomerPage({ onLogout }) {
           comment: ratingForm.comment
         })
       })
-      
+
       let data
       try {
         data = await response.json()
@@ -343,7 +391,7 @@ export default function CustomerPage({ onLogout }) {
         setError(data.message || 'Gửi đánh giá thất bại')
         return
       }
-      
+
       setSuccess('Cảm ơn bạn đã gửi đánh giá!')
       setRatingForm({ ticketId: '', rating: 0, comment: '' })
       // Reload tickets để cập nhật trạng thái đã đánh giá
@@ -369,10 +417,10 @@ export default function CustomerPage({ onLogout }) {
       setLoading(true)
       setError('')
       setProductWarrantyInfo(null)
-      
+
       // Tìm sản phẩm theo serial
       const product = myProducts.find(p => p.soSerial.toLowerCase() === productSerial.trim().toLowerCase())
-      
+
       if (!product) {
         setError('Không tìm thấy sản phẩm với số serial này')
         return
@@ -411,6 +459,7 @@ export default function CustomerPage({ onLogout }) {
 
   const getStatusBadge = (status) => {
     const badges = {
+      dang_cho: { text: 'Đang chờ', class: 'badge-secondary', icon: '⏳' },
       tiep_nhan: { text: 'Tiếp nhận', class: 'badge-info', icon: '📥' },
       dang_kiem_tra: { text: 'Đang kiểm tra', class: 'badge-warning', icon: '🔍' },
       dang_sua: { text: 'Đang sửa', class: 'badge-primary', icon: '🔧' },
@@ -422,6 +471,7 @@ export default function CustomerPage({ onLogout }) {
 
   const getProgressPercentage = (status) => {
     const progress = {
+      dang_cho: 10,
       tiep_nhan: 25,
       dang_kiem_tra: 50,
       dang_sua: 75,
@@ -459,23 +509,23 @@ export default function CustomerPage({ onLogout }) {
         return false
       }
     }
-    
+
     // Status filter
     if (statusFilter && t.trangThai !== statusFilter) return false
-    
+
     // Date filter
     if (!t.ngayTiepNhan) return true
     const ticketDate = new Date(t.ngayTiepNhan)
     if (dateFrom) {
       const from = new Date(dateFrom)
       // include day start
-      from.setHours(0,0,0,0)
+      from.setHours(0, 0, 0, 0)
       if (ticketDate < from) return false
     }
     if (dateTo) {
       const to = new Date(dateTo)
       // include end of day
-      to.setHours(23,59,59,999)
+      to.setHours(23, 59, 59, 999)
       if (ticketDate > to) return false
     }
     return true
@@ -602,7 +652,7 @@ export default function CustomerPage({ onLogout }) {
                   <div className="stat-value">{myTickets.length}</div>
                 </div>
               </div>
-              
+
               <div className="stat-card orange">
                 <div className="stat-icon">⏳</div>
                 <div className="stat-content">
@@ -610,7 +660,7 @@ export default function CustomerPage({ onLogout }) {
                   <div className="stat-value">{pendingTickets.length}</div>
                 </div>
               </div>
-              
+
               <div className="stat-card green">
                 <div className="stat-icon">✅</div>
                 <div className="stat-content">
@@ -618,7 +668,7 @@ export default function CustomerPage({ onLogout }) {
                   <div className="stat-value">{completedTickets.length}</div>
                 </div>
               </div>
-              
+
               <div className="stat-card purple">
                 <div className="stat-icon">🏸</div>
                 <div className="stat-content">
@@ -652,7 +702,7 @@ export default function CustomerPage({ onLogout }) {
                         📅 {new Date(ticket.ngayTiepNhan).toLocaleDateString('vi-VN')}
                       </p>
                       <div className="progress-bar-mini">
-                        <div 
+                        <div
                           className="progress-fill-mini"
                           style={{ width: `${getProgressPercentage(ticket.trangThai)}%` }}
                         ></div>
@@ -669,7 +719,7 @@ export default function CustomerPage({ onLogout }) {
         {activeTab === 'createRequest' && (
           <div className="create-section">
             <h2 className="section-title">➕ Gửi yêu cầu bảo hành</h2>
-            
+
             <div className="form-container">
               <div className="info-box">
                 <h4>📝 Hướng dẫn gửi yêu cầu</h4>
@@ -828,8 +878,8 @@ export default function CustomerPage({ onLogout }) {
                   <button type="submit" className="btn-primary" disabled={loading || myProducts.length === 0}>
                     {loading ? '⏳ Đang gửi...' : '📤 Gửi yêu cầu bảo hành'}
                   </button>
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     className="btn-secondary"
                     onClick={() => setWarrantyForm(createInitialWarrantyForm())}
                   >
@@ -837,7 +887,7 @@ export default function CustomerPage({ onLogout }) {
                   </button>
                 </div>
               </form>
-            
+
             </div>
           </div>
         )}
@@ -855,8 +905,8 @@ export default function CustomerPage({ onLogout }) {
             <div className="search-box-container">
               <div className="search-box">
                 <span className="search-icon">🔍</span>
-                <input 
-                  type="search" 
+                <input
+                  type="search"
                   placeholder="Tìm kiếm theo tên sản phẩm, mã phiếu, mô tả lỗi..."
                   value={ticketSearch}
                   onChange={(e) => setTicketSearch(e.target.value)}
@@ -880,6 +930,7 @@ export default function CustomerPage({ onLogout }) {
                 <label>🏷️ Trạng thái</label>
                 <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                   <option value="">-- Tất cả --</option>
+                  <option value="dang_cho">⏳ Đang chờ</option>
                   <option value="tiep_nhan">📥 Tiếp nhận</option>
                   <option value="dang_kiem_tra">🔍 Đang kiểm tra</option>
                   <option value="dang_sua">🔧 Đang sửa</option>
@@ -951,7 +1002,7 @@ export default function CustomerPage({ onLogout }) {
 
                     <div className="progress-section">
                       <div className="progress-bar">
-                        <div 
+                        <div
                           className="progress-fill"
                           style={{ width: `${getProgressPercentage(ticket.trangThai)}%` }}
                         ></div>
@@ -961,7 +1012,7 @@ export default function CustomerPage({ onLogout }) {
                   </div>
 
                   <div className="ticket-card-footer">
-                    <button 
+                    <button
                       className="btn-detail"
                       onClick={() => {
                         setTicketCode(ticket.maPhieu)
@@ -971,7 +1022,7 @@ export default function CustomerPage({ onLogout }) {
                       🔍 Xem chi tiết
                     </button>
                     {ticket.trangThai === 'hoan_tat' && !ticket.qualityRating && (
-                      <button 
+                      <button
                         className="btn-rate"
                         onClick={() => {
                           setRatingForm({ ticketId: ticket._id, rating: 0, comment: '' })
@@ -986,6 +1037,37 @@ export default function CustomerPage({ onLogout }) {
                         ⭐ Đã đánh giá: {ticket.qualityRating}/5
                       </span>
                     )}
+
+                    {(() => {
+                      const totalCost = (ticket.chiPhiPhatSinh || 0) +
+                        (ticket.linhKienThayThe || []).reduce((sum, item) => sum + (item.chiPhi || 0), 0);
+
+                      if (totalCost > 0 && ticket.trangThaiThanhToan !== 'da_thanh_toan') {
+                        return (
+                          <button
+                            className="btn-payment-small"
+                            onClick={() => handleViewPayment(ticket.maPhieu)}
+                            style={{
+                              marginLeft: '0.5rem',
+                              background: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)',
+                              color: 'white',
+                              border: 'none',
+                              padding: '0.4rem 0.8rem',
+                              borderRadius: '6px',
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.3rem',
+                              fontSize: '0.9rem'
+                            }}
+                          >
+                            💳 Thanh toán
+                          </button>
+                        )
+                      }
+                      return null
+                    })()}
                   </div>
                 </div>
               ))}
@@ -997,25 +1079,25 @@ export default function CustomerPage({ onLogout }) {
         {activeTab === 'productWarranty' && (
           <div className="product-warranty-section">
             <h2 className="section-title">🏷️ Quản lý bảo hành sản phẩm</h2>
-            
+
             <div className="products-warranty-grid">
               {/* Products List */}
               <div className="products-list-panel">
-                  <div className="panel-header">
-                    <h3>📦 Sản phẩm của bạn ({myProducts.length})</h3>
-                  </div>
+                <div className="panel-header">
+                  <h3>📦 Sản phẩm của bạn ({myProducts.length})</h3>
+                </div>
 
-                  <div className="products-search">
-                    <div className="search-item">
-                      <label>Tìm kiếm sản phẩm / serial / thương hiệu</label>
-                      <input
-                        type="search"
-                        placeholder="Nhập tên sản phẩm, số serial hoặc thương hiệu..."
-                        value={pwSearch}
-                        onChange={(e) => setPwSearch(e.target.value)}
-                      />
-                    </div>
+                <div className="products-search">
+                  <div className="search-item">
+                    <label>Tìm kiếm sản phẩm / serial / thương hiệu</label>
+                    <input
+                      type="search"
+                      placeholder="Nhập tên sản phẩm, số serial hoặc thương hiệu..."
+                      value={pwSearch}
+                      onChange={(e) => setPwSearch(e.target.value)}
+                    />
                   </div>
+                </div>
 
                 {loading && <div className="loading-spinner">⏳ Đang tải...</div>}
 
@@ -1034,10 +1116,10 @@ export default function CustomerPage({ onLogout }) {
                       const daysLeft = Math.ceil((warrantyEndDate - new Date()) / (1000 * 60 * 60 * 24))
                       const totalDays = product.thoiHanBaoHanhThang * 30
                       const status = daysLeft > 30 ? 'valid' : daysLeft > 0 ? 'expiring' : 'expired'
-                      
+
                       return (
-                        <div 
-                          key={product._id} 
+                        <div
+                          key={product._id}
                           className={`product-item ${productWarrantyInfo?.product._id === product._id ? 'active' : ''}`}
                           onClick={() => {
                             // Calculate warranty info
@@ -1072,7 +1154,7 @@ export default function CustomerPage({ onLogout }) {
                               <p className="product-serial">SN: {product.soSerial}</p>
                             </div>
                           </div>
-                          
+
                           <div className="product-item-warranty">
                             <span className={`warranty-status-badge ${status}`}>
                               {status === 'valid' && '✅ Còn hạn'}
@@ -1086,9 +1168,9 @@ export default function CustomerPage({ onLogout }) {
 
                           <div className="product-item-footer">
                             <div className="mini-progress-bar">
-                              <div 
+                              <div
                                 className="mini-progress-fill"
-                                style={{ 
+                                style={{
                                   width: `${Math.max(0, Math.min(100, ((totalDays - daysLeft) / totalDays) * 100))}%`,
                                   background: status === 'valid' ? 'var(--success-color)' : status === 'expiring' ? 'var(--warning-color)' : 'var(--danger-color)'
                                 }}
@@ -1162,14 +1244,14 @@ export default function CustomerPage({ onLogout }) {
                               <span className="point-value">{productWarrantyInfo.purchaseDate.toLocaleDateString('vi-VN')}</span>
                             </div>
                           </div>
-                          
+
                           <div className="timeline-line">
-                            <div 
+                            <div
                               className="timeline-progress"
                               style={{ width: `${productWarrantyInfo.percentUsed}%` }}
                             ></div>
                           </div>
-                          
+
                           <div className="timeline-point">
                             <div className={`point-icon ${productWarrantyInfo.status === 'expired' ? 'expired' : 'valid'}`}>
                               {productWarrantyInfo.status === 'expired' ? '🔴' : '🟢'}
@@ -1229,21 +1311,21 @@ export default function CustomerPage({ onLogout }) {
                       {/* Alert Messages */}
                       {productWarrantyInfo.status === 'expiring' && (
                         <div className="warranty-alert warning">
-                          <strong>⚠️ Cảnh báo:</strong> Bảo hành sắp hết hạn trong {productWarrantyInfo.daysLeft} ngày. 
+                          <strong>⚠️ Cảnh báo:</strong> Bảo hành sắp hết hạn trong {productWarrantyInfo.daysLeft} ngày.
                           Hãy kiểm tra sản phẩm và liên hệ nếu cần hỗ trợ.
                         </div>
                       )}
 
                       {productWarrantyInfo.status === 'expired' && (
                         <div className="warranty-alert danger">
-                          <strong>❌ Thông báo:</strong> Sản phẩm đã hết thời hạn bảo hành {Math.abs(productWarrantyInfo.daysLeft)} ngày. 
+                          <strong>❌ Thông báo:</strong> Sản phẩm đã hết thời hạn bảo hành {Math.abs(productWarrantyInfo.daysLeft)} ngày.
                           Vui lòng liên hệ để biết thêm thông tin về dịch vụ sửa chữa trả phí.
                         </div>
                       )}
 
                       {productWarrantyInfo.status === 'valid' && (
                         <div className="warranty-alert success">
-                          <strong>✅ Trạng thái:</strong> Sản phẩm vẫn còn {productWarrantyInfo.daysLeft} ngày bảo hành. 
+                          <strong>✅ Trạng thái:</strong> Sản phẩm vẫn còn {productWarrantyInfo.daysLeft} ngày bảo hành.
                           Bạn có thể yên tâm sử dụng.
                         </div>
                       )}
@@ -1252,7 +1334,7 @@ export default function CustomerPage({ onLogout }) {
                     {/* Actions */}
                     <div className="warranty-detail-footer">
                       {productWarrantyInfo.status !== 'expired' && (
-                        <button 
+                        <button
                           className="btn-primary btn-large"
                           onClick={() => {
                             const freshForm = createInitialWarrantyForm()
@@ -1267,7 +1349,7 @@ export default function CustomerPage({ onLogout }) {
                           <span>➕</span> Tạo yêu cầu bảo hành
                         </button>
                       )}
-                      <button 
+                      <button
                         className="btn-secondary btn-large"
                         onClick={() => {
                           if (productWarrantyInfo.tickets.length > 0) {
@@ -1290,7 +1372,7 @@ export default function CustomerPage({ onLogout }) {
         {activeTab === 'track' && (
           <div className="track-section">
             <h2 className="section-title">🔍 Tra cứu phiếu bảo hành</h2>
-            
+
             <form onSubmit={handleTrackTicket} className="track-form">
               <div className="form-group">
                 <label>Nhập mã phiếu bảo hành</label>
@@ -1317,199 +1399,257 @@ export default function CustomerPage({ onLogout }) {
                   </span>
                 </div>
 
-                    <div className="result-grid">
-                      {/* Left: summary */}
-                      <aside className="result-summary">
-                        <div className="summary-card">
-                          <div className="summary-top">
-                            <div className="product-title">
-                              <h4>{trackingResult.sanPhamId?.tenSP || 'Sản phẩm'}</h4>
-                              <p className="product-serial">SN: {trackingResult.sanPhamId?.soSerial || '—'}</p>
-                            </div>
-                            <div className={`status-block ${getStatusBadge(trackingResult.trangThai).class}`}>
-                              {getStatusBadge(trackingResult.trangThai).icon} {getStatusBadge(trackingResult.trangThai).text}
-                            </div>
+                <div className="result-grid">
+                  {/* Left: summary */}
+                  <aside className="result-summary">
+                    <div className="summary-card">
+                      <div className="summary-top">
+                        <div className="product-title">
+                          <h4>{trackingResult.sanPhamId?.tenSP || 'Sản phẩm'}</h4>
+                          <p className="product-serial">SN: {trackingResult.sanPhamId?.soSerial || '—'}</p>
+                        </div>
+                        <div className={`status-block ${getStatusBadge(trackingResult.trangThai).class}`}>
+                          {getStatusBadge(trackingResult.trangThai).icon} {getStatusBadge(trackingResult.trangThai).text}
+                        </div>
+                      </div>
+
+                      <div className="summary-body">
+                        <div className="summary-row">
+                          <span>Loại</span>
+                          <strong>{trackingResult.sanPhamId?.loaiSanPham || 'N/A'}</strong>
+                        </div>
+                        <div className="summary-row">
+                          <span>Tiếp nhận</span>
+                          <strong>{new Date(trackingResult.ngayTiepNhan).toLocaleDateString('vi-VN')}</strong>
+                        </div>
+                        <div className="summary-row">
+                          <span>Hoàn tất</span>
+                          <strong>{trackingResult.ngayHoanTat ? new Date(trackingResult.ngayHoanTat).toLocaleDateString('vi-VN') : 'Đang xử lý'}</strong>
+                        </div>
+
+                        <div className="summary-progress">
+                          <div className="progress-label">Tiến độ</div>
+                          <div className="progress-bar small">
+                            <div className="progress-fill" style={{ width: `${getProgressPercentage(trackingResult.trangThai)}%` }}></div>
                           </div>
+                          <div className="progress-percent">{getProgressPercentage(trackingResult.trangThai)}%</div>
+                        </div>
 
-                          <div className="summary-body">
-                            <div className="summary-row">
-                              <span>Loại</span>
-                              <strong>{trackingResult.sanPhamId?.loaiSanPham || 'N/A'}</strong>
-                            </div>
-                            <div className="summary-row">
-                              <span>Tiếp nhận</span>
-                              <strong>{new Date(trackingResult.ngayTiepNhan).toLocaleDateString('vi-VN')}</strong>
-                            </div>
-                            <div className="summary-row">
-                              <span>Hoàn tất</span>
-                              <strong>{trackingResult.ngayHoanTat ? new Date(trackingResult.ngayHoanTat).toLocaleDateString('vi-VN') : 'Đang xử lý'}</strong>
-                            </div>
+                        <div className="summary-actions">
+                          <button className="btn-primary" onClick={() => {
+                            setWarrantyForm(prev => ({ ...prev, sanPhamId: trackingResult.sanPhamId?._id || '' }))
+                            setActiveTab('createRequest')
+                          }}>➕ Tạo yêu cầu</button>
+                          <button className="btn-secondary" onClick={() => setActiveTab('rate')}>✉️ Liên hệ</button>
+                        </div>
+                      </div>
+                    </div>
+                  </aside>
 
-                            <div className="summary-progress">
-                              <div className="progress-label">Tiến độ</div>
-                              <div className="progress-bar small">
-                                <div className="progress-fill" style={{ width: `${getProgressPercentage(trackingResult.trangThai)}%` }}></div>
+                  {/* Right: details */}
+                  <section className="result-details">
+                    <div className="result-card">
+                      <h4>📝 Mô tả sự cố</h4>
+                      <p className="issue-description">{trackingResult.moTaLoi || 'Không có mô tả'}</p>
+                    </div>
+
+                    <div className="result-card">
+                      <h4>📈 Cập nhật tiến độ</h4>
+                      {trackingResult.moTaTienDo && trackingResult.moTaTienDo.length > 0 ? (
+                        <div className="progress-update-list">
+                          {trackingResult.moTaTienDo
+                            .sort((a, b) => new Date(b.thoiGian) - new Date(a.thoiGian))
+                            .map((item, index) => (
+                              <div key={index} className="progress-update-item">
+                                <div className="update-time">
+                                  🕒 {new Date(item.thoiGian).toLocaleString('vi-VN')}
+                                </div>
+                                <div className="update-content">
+                                  {item.noiDung}
+                                </div>
                               </div>
-                              <div className="progress-percent">{getProgressPercentage(trackingResult.trangThai)}%</div>
-                            </div>
+                            ))}
+                        </div>
+                      ) : (
+                        <p className="empty-hint">Chưa có cập nhật tiến độ.</p>
+                      )}
+                    </div>
 
-                            <div className="summary-actions">
-                              <button className="btn-primary" onClick={() => {
-                                setWarrantyForm(prev => ({ ...prev, sanPhamId: trackingResult.sanPhamId?._id || '' }))
-                                setActiveTab('createRequest')
-                              }}>➕ Tạo yêu cầu</button>
-                              <button className="btn-secondary" onClick={() => setActiveTab('rate')}>✉️ Liên hệ</button>
+
+
+                    <div className="result-card">
+                      <h4>⏱️ Lịch sử trạng thái</h4>
+                      {trackingResult.lichSuTrangThai && trackingResult.lichSuTrangThai.length > 0 ? (
+                        <div className="timeline">
+                          {trackingResult.lichSuTrangThai
+                            .sort((a, b) => new Date(a.thoiGian) - new Date(b.thoiGian))
+                            .map((item, index) => (
+                              <div key={index} className="timeline-item">
+                                <div className="timeline-marker">
+                                  <div className={`marker-dot ${item.trangThai}`}></div>
+                                  {index < trackingResult.lichSuTrangThai.length - 1 && (
+                                    <div className="marker-line"></div>
+                                  )}
+                                </div>
+                                <div className="timeline-content">
+                                  <div className="timeline-status">
+                                    {getStatusBadge(item.trangThai).icon} {getStatusBadge(item.trangThai).text}
+                                  </div>
+                                  <div className="timeline-time">
+                                    {new Date(item.thoiGian).toLocaleString('vi-VN')}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                        </div>
+                      ) : (
+                        <p className="empty-hint">Chưa có lịch sử trạng thái.</p>
+                      )}
+                    </div>
+
+                    <div className="result-card">
+                      <h4>📎 Tệp đính kèm</h4>
+                      {(() => {
+                        const normalize = (p) => p && (p.startsWith('http') ? p : `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${p}`)
+
+                        const parts = []
+
+                        if (trackingResult.hinhAnhLoi && trackingResult.hinhAnhLoi.length > 0) {
+                          parts.push(
+                            <div key="hinhAnhLoi" className="attachments-grid">
+                              {trackingResult.hinhAnhLoi.map((p, idx) => {
+                                const src = normalize(p)
+                                return (
+                                  <a key={`img-${idx}`} href={src || '#'} className="attachment-thumb" target="_blank" rel="noreferrer">
+                                    <img src={src} alt={`Hình ${idx + 1}`} className="attachment-thumb-img" />
+                                    <div className="attachment-info">
+                                      <div className="attachment-name">{`Hình ${idx + 1}`}</div>
+                                    </div>
+                                  </a>
+                                )
+                              })}
+                            </div>
+                          )
+                        }
+
+                        const imageSet = new Set((trackingResult.hinhAnhLoi || []).map(normalize))
+                        const isValidPath = (p) => !!p && (p.startsWith('http') || p.startsWith('/'))
+                        const uniqueFiles = (trackingResult.tepDinhKem || []).filter(f => {
+                          if (!isValidPath(f.duLieu)) return false
+                          const url = normalize(f.duLieu)
+                          return !imageSet.has(url)
+                        })
+
+                        if (uniqueFiles.length > 0) {
+                          parts.push(
+                            <div key="tepDinhKem" className="attachments-grid">
+                              {uniqueFiles.map((f, i) => {
+                                const src = f.duLieu && (f.duLieu.startsWith('http') ? f.duLieu : `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${f.duLieu}`)
+                                const isImage = typeof f.kieuNoiDung === 'string' && f.kieuNoiDung.startsWith('image/')
+                                return (
+                                  <a key={i} href={src || '#'} className="attachment-thumb" target="_blank" rel="noreferrer">
+                                    {isImage ? (
+                                      <img src={src} alt={f.tenTep || `Hình ${i + 1}`} className="attachment-thumb-img" />
+                                    ) : (
+                                      <div className="attachment-file-icon">📎</div>
+                                    )}
+                                    <div className="attachment-info">
+                                      <div className="attachment-name">{f.tenTep || `Tệp ${i + 1}`}</div>
+                                      <div className="attachment-meta">{f.kieuNoiDung || ''} · {formatAttachmentSize(f.kichThuoc)}</div>
+                                    </div>
+                                  </a>
+                                )
+                              })}
+                            </div>
+                          )
+                        }
+
+                        if (parts.length === 0) return <p className="empty-hint">Không có tệp đính kèm.</p>
+                        return parts
+                      })()}
+                    </div>
+
+                    {/* Payment Section */}
+                    {(() => {
+                      const totalCost = (trackingResult.chiPhiPhatSinh || 0) +
+                        (trackingResult.linhKienThayThe || []).reduce((sum, item) => sum + (item.chiPhi || 0), 0);
+
+                      if (totalCost > 0) {
+                        return (
+                          <div className="result-card">
+                            <h4>💰 Chi phí cần thanh toán</h4>
+                            <div className="payment-info">
+                              <div className="cost-row">
+                                <span>Tổng chi phí:</span>
+                                <span className="cost-value">{totalCost.toLocaleString('vi-VN')} VNĐ</span>
+                              </div>
+                              <div className="payment-status-row">
+                                <span>Trạng thái:</span>
+                                <span className={`status-badge ${trackingResult.trangThaiThanhToan === 'da_thanh_toan' ? 'success' : 'pending'}`}>
+                                  {trackingResult.trangThaiThanhToan === 'da_thanh_toan' ? '✅ Đã thanh toán' : '⏳ Chưa thanh toán'}
+                                </span>
+                              </div>
+
+                              {trackingResult.trangThaiThanhToan !== 'da_thanh_toan' && (
+                                <button
+                                  className="btn-primary btn-payment"
+                                  onClick={() => handlePayment(trackingResult.maPhieu)}
+                                >
+                                  💳 Thanh toán ngay
+                                </button>
+                              )}
                             </div>
                           </div>
-                        </div>
-                      </aside>
+                        );
+                      }
+                      return null;
+                    })()}
 
-                      {/* Right: details */}
-                      <section className="result-details">
-                        <div className="result-card">
-                          <h4>📝 Mô tả sự cố</h4>
-                          <p className="issue-description">{trackingResult.moTaLoi || 'Không có mô tả'}</p>
-                        </div>
-
-                        <div className="result-card">
-                          <h4>⏱️ Lịch sử trạng thái</h4>
-                          {trackingResult.lichSuTrangThai && trackingResult.lichSuTrangThai.length > 0 ? (
-                            <div className="timeline">
-                              {trackingResult.lichSuTrangThai
-                                .sort((a, b) => new Date(a.thoiGian) - new Date(b.thoiGian))
-                                .map((item, index) => (
-                                  <div key={index} className="timeline-item">
-                                    <div className="timeline-marker">
-                                      <div className={`marker-dot ${item.trangThai}`}></div>
-                                      {index < trackingResult.lichSuTrangThai.length - 1 && (
-                                        <div className="marker-line"></div>
-                                      )}
-                                    </div>
-                                    <div className="timeline-content">
-                                      <div className="timeline-status">
-                                        {getStatusBadge(item.trangThai).icon} {getStatusBadge(item.trangThai).text}
-                                      </div>
-                                      <div className="timeline-time">
-                                        {new Date(item.thoiGian).toLocaleString('vi-VN')}
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
+                    {trackingResult.nhanVienTiepNhanId && (
+                      <div className="result-card">
+                        <h4>👷 Nhân viên xử lý</h4>
+                        <div className="detail-grid">
+                          <div className="detail-item">
+                            <span className="label">Họ tên:</span>
+                            <span className="value">{trackingResult.nhanVienTiepNhanId.hoTen}</span>
+                          </div>
+                          <div className="detail-item">
+                            <span className="label">Email:</span>
+                            <span className="value">{trackingResult.nhanVienTiepNhanId.email}</span>
+                          </div>
+                          {trackingResult.nhanVienTiepNhanId.soDienThoai && (
+                            <div className="detail-item">
+                              <span className="label">SĐT:</span>
+                              <span className="value">{trackingResult.nhanVienTiepNhanId.soDienThoai}</span>
                             </div>
-                          ) : (
-                            <p className="empty-hint">Chưa có lịch sử trạng thái.</p>
                           )}
                         </div>
+                      </div>
+                    )}
 
-                        <div className="result-card">
-                          <h4>📎 Tệp đính kèm</h4>
-                          {(() => {
-                            const normalize = (p) => p && (p.startsWith('http') ? p : `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${p}`)
-
-                            const parts = []
-
-                            // 1) Render any hinhAnhLoi images first (these are primary thumbnails)
-                            if (trackingResult.hinhAnhLoi && trackingResult.hinhAnhLoi.length > 0) {
-                              parts.push(
-                                <div key="hinhAnhLoi" className="attachments-grid">
-                                  {trackingResult.hinhAnhLoi.map((p, idx) => {
-                                    const src = normalize(p)
-                                    return (
-                                      <a key={`img-${idx}`} href={src || '#'} className="attachment-thumb" target="_blank" rel="noreferrer">
-                                        <img src={src} alt={`Hình ${idx+1}`} className="attachment-thumb-img" />
-                                        <div className="attachment-info">
-                                          <div className="attachment-name">{`Hình ${idx+1}`}</div>
-                                        </div>
-                                      </a>
-                                    )
-                                  })}
-                                </div>
-                              )
-                            }
-
-                            // 2) Then render tepDinhKem but filter out any entries that are identical to hinhAnhLoi
-                            const imageSet = new Set((trackingResult.hinhAnhLoi || []).map(normalize))
-                            const isValidPath = (p) => !!p && (p.startsWith('http') || p.startsWith('/'))
-                            const uniqueFiles = (trackingResult.tepDinhKem || []).filter(f => {
-                              if (!isValidPath(f.duLieu)) return false
-                              const url = normalize(f.duLieu)
-                              return !imageSet.has(url)
-                            })
-
-                            if (uniqueFiles.length > 0) {
-                              parts.push(
-                                <div key="tepDinhKem" className="attachments-grid">
-                                  {uniqueFiles.map((f, i) => {
-                                    const src = f.duLieu && (f.duLieu.startsWith('http') ? f.duLieu : `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${f.duLieu}`)
-                                    const isImage = typeof f.kieuNoiDung === 'string' && f.kieuNoiDung.startsWith('image/')
-                                    return (
-                                      <a key={i} href={src || '#'} className="attachment-thumb" target="_blank" rel="noreferrer">
-                                        {isImage ? (
-                                          <img src={src} alt={f.tenTep || `Hình ${i+1}`} className="attachment-thumb-img" />
-                                        ) : (
-                                          <div className="attachment-file-icon">📎</div>
-                                        )}
-                                        <div className="attachment-info">
-                                          <div className="attachment-name">{f.tenTep || `Tệp ${i+1}`}</div>
-                                          <div className="attachment-meta">{f.kieuNoiDung || ''} · {formatAttachmentSize(f.kichThuoc)}</div>
-                                        </div>
-                                      </a>
-                                    )
-                                  })}
-                                </div>
-                              )
-                            }
-
-                            if (parts.length === 0) return <p className="empty-hint">Không có tệp đính kèm.</p>
-                            return parts
-                          })()}
+                    {trackingResult.qualityRating && (
+                      <div className="result-card rating-card">
+                        <h4>⭐ Đánh giá của khách hàng</h4>
+                        <div className="rating-display">
+                          <div className="rating-stars">
+                            {[1, 2, 3, 4, 5].map(star => (
+                              <span key={star} className={star <= trackingResult.qualityRating ? 'star-filled' : 'star-empty'}>
+                                ⭐
+                              </span>
+                            ))}
+                            <span className="rating-score">{trackingResult.qualityRating}/5</span>
+                          </div>
+                          {trackingResult.qualityComments && (
+                            <div className="rating-comment">
+                              <strong>💬 Nhận xét:</strong>
+                              <p>{trackingResult.qualityComments}</p>
+                            </div>
+                          )}
                         </div>
-
-                        {trackingResult.nhanVienTiepNhanId && (
-                          <div className="result-card">
-                            <h4>👷 Nhân viên xử lý</h4>
-                            <div className="detail-grid">
-                              <div className="detail-item">
-                                <span className="label">Họ tên:</span>
-                                <span className="value">{trackingResult.nhanVienTiepNhanId.hoTen}</span>
-                              </div>
-                              <div className="detail-item">
-                                <span className="label">Email:</span>
-                                <span className="value">{trackingResult.nhanVienTiepNhanId.email}</span>
-                              </div>
-                              {trackingResult.nhanVienTiepNhanId.soDienThoai && (
-                                <div className="detail-item">
-                                  <span className="label">SĐT:</span>
-                                  <span className="value">{trackingResult.nhanVienTiepNhanId.soDienThoai}</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {trackingResult.qualityRating && (
-                          <div className="result-card rating-card">
-                            <h4>⭐ Đánh giá của khách hàng</h4>
-                            <div className="rating-display">
-                              <div className="rating-stars">
-                                {[1, 2, 3, 4, 5].map(star => (
-                                  <span key={star} className={star <= trackingResult.qualityRating ? 'star-filled' : 'star-empty'}>
-                                    ⭐
-                                  </span>
-                                ))}
-                                <span className="rating-score">{trackingResult.qualityRating}/5</span>
-                              </div>
-                              {trackingResult.qualityComments && (
-                                <div className="rating-comment">
-                                  <strong>💬 Nhận xét:</strong>
-                                  <p>{trackingResult.qualityComments}</p>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </section>
-                    </div>
+                      </div>
+                    )}
+                  </section>
+                </div>
               </div>
             )}
           </div>
@@ -1527,7 +1667,7 @@ export default function CustomerPage({ onLogout }) {
         {activeTab === 'rate' && (
           <div className="rate-section">
             <h2 className="section-title">⭐ Đánh giá chất lượng</h2>
-            
+
             {completedTickets.filter(t => !t.qualityRating).length === 0 ? (
               <div className="empty-state">
                 {completedTickets.length === 0 ? (
@@ -1546,7 +1686,7 @@ export default function CustomerPage({ onLogout }) {
                     <label>Chọn phiếu đã hoàn tất</label>
                     <select
                       value={ratingForm.ticketId}
-                      onChange={(e) => setRatingForm({...ratingForm, ticketId: e.target.value})}
+                      onChange={(e) => setRatingForm({ ...ratingForm, ticketId: e.target.value })}
                       required
                     >
                       <option value="">-- Chọn phiếu --</option>
@@ -1566,7 +1706,7 @@ export default function CustomerPage({ onLogout }) {
                           key={star}
                           type="button"
                           className={`star-btn ${star <= ratingForm.rating ? 'active' : ''}`}
-                          onClick={() => setRatingForm({...ratingForm, rating: star})}
+                          onClick={() => setRatingForm({ ...ratingForm, rating: star })}
                         >
                           ⭐
                         </button>
@@ -1586,7 +1726,7 @@ export default function CustomerPage({ onLogout }) {
                     <label>Nhận xét chi tiết (không bắt buộc)</label>
                     <textarea
                       value={ratingForm.comment}
-                      onChange={(e) => setRatingForm({...ratingForm, comment: e.target.value})}
+                      onChange={(e) => setRatingForm({ ...ratingForm, comment: e.target.value })}
                       rows="4"
                       placeholder="Chia sẻ trải nghiệm của bạn về dịch vụ bảo hành..."
                     />

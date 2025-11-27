@@ -104,6 +104,15 @@ export const customerAPI = {
     })
     return handleResponse(response)
   },
+
+  // Thanh toán phí bảo hành
+  processPayment: async (ticketId) => {
+    const response = await fetch(`${API_BASE_URL}/customer/payment/${ticketId}`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    })
+    return handleResponse(response)
+  },
 }
 
 // ============ EMPLOYEE API ============

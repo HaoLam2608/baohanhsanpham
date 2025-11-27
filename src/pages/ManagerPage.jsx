@@ -8,7 +8,7 @@ export default function ManagerPage({ onLogout }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  
+
   // State cho từng tab
   const [stats, setStats] = useState(null)
   const [products, setProducts] = useState([])
@@ -21,8 +21,8 @@ export default function ManagerPage({ onLogout }) {
   const [customerTickets, setCustomerTickets] = useState([])
   const [customerReviews, setCustomerReviews] = useState([])
   const [customerAvgRating, setCustomerAvgRating] = useState(null)
-  const [customerRatingCounts, setCustomerRatingCounts] = useState([0,0,0,0,0])
-  
+  const [customerRatingCounts, setCustomerRatingCounts] = useState([0, 0, 0, 0, 0])
+
   // State cho modal
   const [showProductModal, setShowProductModal] = useState(false)
   const [showEmployeeModal, setShowEmployeeModal] = useState(false)
@@ -36,7 +36,7 @@ export default function ManagerPage({ onLogout }) {
   // State cho modal chi tiết sản phẩm
   const [showProductDetailModal, setShowProductDetailModal] = useState(false)
   const [selectedProductDetail, setSelectedProductDetail] = useState(null)
-  
+
   // Form data
   const [productForm, setProductForm] = useState({
     loaiSanPham: 'Vot',
@@ -48,7 +48,7 @@ export default function ManagerPage({ onLogout }) {
     thongTinKyThuat: {},
     khachHangId: ''
   })
-  
+
   const [employeeForm, setEmployeeForm] = useState({
     hoTen: '',
     email: '',
@@ -71,7 +71,7 @@ export default function ManagerPage({ onLogout }) {
   }, [activeTab])
 
   const loadData = async () => {
-    switch(activeTab) {
+    switch (activeTab) {
       case 'dashboard':
         await loadStats()
         break
@@ -97,16 +97,16 @@ export default function ManagerPage({ onLogout }) {
       setLoading(true)
       setError('')
       const data = await managerAPI.getDashboardStats()
-      
+
       const summary = data.summary || {}
       const statusCounts = {}
-      
+
       if (data.ticketsByStatus && Array.isArray(data.ticketsByStatus)) {
         data.ticketsByStatus.forEach(item => {
           statusCounts[item._id] = item.count
         })
       }
-      
+
       setStats({
         summary,
         statusCounts,
@@ -170,12 +170,12 @@ export default function ManagerPage({ onLogout }) {
       if (reviews.length > 0) {
         const avg = (reviews.reduce((sum, r) => sum + (r.qualityRating || 0), 0) / reviews.length).toFixed(1)
         setCustomerAvgRating(avg)
-        const counts = [0,0,0,0,0]
+        const counts = [0, 0, 0, 0, 0]
         reviews.forEach(r => { if (r.qualityRating) counts[r.qualityRating - 1]++ })
         setCustomerRatingCounts(counts)
       } else {
         setCustomerAvgRating(null)
-        setCustomerRatingCounts([0,0,0,0,0])
+        setCustomerRatingCounts([0, 0, 0, 0, 0])
       }
     } catch (err) {
       console.error('Error opening customer modal:', err)
@@ -200,13 +200,13 @@ export default function ManagerPage({ onLogout }) {
   // Filter functions
   const getFilteredTickets = () => {
     return tickets.filter(ticket => {
-      const matchesSearch = !ticketSearch || 
+      const matchesSearch = !ticketSearch ||
         ticket.maPhieu?.toLowerCase().includes(ticketSearch.toLowerCase()) ||
         ticket.sanPhamId?.tenSP?.toLowerCase().includes(ticketSearch.toLowerCase()) ||
         ticket.khachHangId?.hoTen?.toLowerCase().includes(ticketSearch.toLowerCase())
-      
+
       const matchesStatus = ticketStatusFilter === 'all' || ticket.trangThai === ticketStatusFilter
-      
+
       return matchesSearch && matchesStatus
     })
   }
@@ -217,9 +217,9 @@ export default function ManagerPage({ onLogout }) {
         product.tenSP?.toLowerCase().includes(productSearch.toLowerCase()) ||
         product.soSerial?.toLowerCase().includes(productSearch.toLowerCase()) ||
         product.thuongHieu?.toLowerCase().includes(productSearch.toLowerCase())
-      
+
       const matchesType = productTypeFilter === 'all' || product.loaiSanPham === productTypeFilter
-      
+
       return matchesSearch && matchesType
     })
   }
@@ -229,9 +229,9 @@ export default function ManagerPage({ onLogout }) {
       const matchesSearch = !employeeSearch ||
         employee.hoTen?.toLowerCase().includes(employeeSearch.toLowerCase()) ||
         employee.email?.toLowerCase().includes(employeeSearch.toLowerCase())
-      
+
       const matchesRole = employeeRoleFilter === 'all' || employee.chucVu === employeeRoleFilter
-      
+
       return matchesSearch && matchesRole
     })
   }
@@ -307,7 +307,7 @@ export default function ManagerPage({ onLogout }) {
 
   const handleDeleteProduct = async (id) => {
     if (!confirm('Bạn có chắc muốn xóa sản phẩm này?')) return
-    
+
     try {
       setLoading(true)
       await generalAPI.deleteProduct(id)
@@ -363,9 +363,9 @@ export default function ManagerPage({ onLogout }) {
         },
         body: JSON.stringify(employeeForm)
       })
-      
+
       if (!response.ok) throw new Error('Tạo nhân viên thất bại')
-      
+
       setSuccess('Tạo nhân viên thành công!')
       setShowEmployeeModal(false)
       resetEmployeeForm()
@@ -379,7 +379,7 @@ export default function ManagerPage({ onLogout }) {
 
   const handleDeleteEmployee = async (id) => {
     if (!confirm('Bạn có chắc muốn xóa nhân viên này?')) return
-    
+
     try {
       setLoading(true)
       const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/nhanvien/${id}`, {
@@ -388,9 +388,9 @@ export default function ManagerPage({ onLogout }) {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
       })
-      
+
       if (!response.ok) throw new Error('Xóa nhân viên thất bại')
-      
+
       setSuccess('Xóa nhân viên thành công!')
       loadEmployees()
     } catch (err) {
@@ -452,6 +452,7 @@ export default function ManagerPage({ onLogout }) {
 
   const getStatusBadge = (status) => {
     const badges = {
+      dang_cho: { text: 'Đang chờ', class: 'badge-secondary' },
       tiep_nhan: { text: 'Tiếp nhận', class: 'badge-info' },
       dang_kiem_tra: { text: 'Đang kiểm tra', class: 'badge-warning' },
       dang_sua: { text: 'Đang sửa', class: 'badge-primary' },
@@ -459,6 +460,16 @@ export default function ManagerPage({ onLogout }) {
       tu_choi: { text: 'Từ chối', class: 'badge-danger' }
     }
     return badges[status] || { text: status, class: 'badge-secondary' }
+  }
+
+  const getPredictionText = (code) => {
+    const map = {
+      'loi_su_dung': 'Lỗi do người sử dụng',
+      'loi_ky_thuat': 'Lỗi kỹ thuật / Nhà sản xuất',
+      'khong_xac_dinh': 'Chưa xác định',
+      'hao_mon_tu_nhien': 'Hao mòn tự nhiên'
+    }
+    return map[code] || code || 'Chưa có dự đoán'
   }
 
   return (
@@ -536,7 +547,7 @@ export default function ManagerPage({ onLogout }) {
           <div className="modal-content modal-large" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header-customer-modern">
               <div className="customer-header-top">
-                <div className="customer-avatar-large">{selectedCustomer.hoTen ? selectedCustomer.hoTen.split(' ').map(n => n[0]).slice(0,2).join('') : 'KH'}</div>
+                <div className="customer-avatar-large">{selectedCustomer.hoTen ? selectedCustomer.hoTen.split(' ').map(n => n[0]).slice(0, 2).join('') : 'KH'}</div>
                 <div className="customer-header-info">
                   <div className="customer-name">{selectedCustomer.hoTen}</div>
                   <div className="customer-email">📧 {selectedCustomer.email}</div>
@@ -761,7 +772,7 @@ export default function ManagerPage({ onLogout }) {
         {activeTab === 'dashboard' && stats && (
           <div className="dashboard-section">
             <h2 className="section-title">📊 Thống kê tổng quan</h2>
-            
+
             <div className="stats-grid">
               <div className="stat-card blue">
                 <div className="stat-icon">📋</div>
@@ -770,7 +781,7 @@ export default function ManagerPage({ onLogout }) {
                   <div className="stat-value">{stats.summary.totalTickets || 0}</div>
                 </div>
               </div>
-              
+
               <div className="stat-card green">
                 <div className="stat-icon">🙋</div>
                 <div className="stat-content">
@@ -778,7 +789,7 @@ export default function ManagerPage({ onLogout }) {
                   <div className="stat-value">{stats.summary.totalCustomers || 0}</div>
                 </div>
               </div>
-              
+
               <div className="stat-card purple">
                 <div className="stat-icon">🏸</div>
                 <div className="stat-content">
@@ -786,7 +797,7 @@ export default function ManagerPage({ onLogout }) {
                   <div className="stat-value">{stats.summary.totalProducts || 0}</div>
                 </div>
               </div>
-              
+
               <div className="stat-card orange">
                 <div className="stat-icon">👥</div>
                 <div className="stat-content">
@@ -801,19 +812,19 @@ export default function ManagerPage({ onLogout }) {
                 <div className="stat-label">⏳ Chờ xử lý</div>
                 <div className="stat-value">{stats.statusCounts.tiep_nhan || 0}</div>
               </div>
-              
+
               <div className="stat-card-small orange">
                 <div className="stat-label">🔍 Đang xử lý</div>
                 <div className="stat-value">
                   {(stats.statusCounts.dang_kiem_tra || 0) + (stats.statusCounts.dang_sua || 0)}
                 </div>
               </div>
-              
+
               <div className="stat-card-small green">
                 <div className="stat-label">✅ Hoàn tất</div>
                 <div className="stat-value">{stats.statusCounts.hoan_tat || 0}</div>
               </div>
-              
+
               <div className="stat-card-small gray">
                 <div className="stat-label">⏱️ Thời gian TB</div>
                 <div className="stat-value">{stats.summary.avgCompletionDays || 0} ngày</div>
@@ -890,6 +901,7 @@ export default function ManagerPage({ onLogout }) {
                   className="filter-select"
                 >
                   <option value="all">Tất cả</option>
+                  <option value="dang_cho">Đang chờ</option>
                   <option value="tiep_nhan">Tiếp nhận</option>
                   <option value="dang_kiem_tra">Đang kiểm tra</option>
                   <option value="dang_sua">Đang sửa</option>
@@ -903,7 +915,7 @@ export default function ManagerPage({ onLogout }) {
                 </button>
               )}
             </div>
-            
+
             <div className="table-container">
               <table className="data-table">
                 <thead>
@@ -944,8 +956,8 @@ export default function ManagerPage({ onLogout }) {
                         <td>{new Date(ticket.ngayTiepNhan).toLocaleDateString('vi-VN')}</td>
                         <td>{ticket.ngayHoanTat ? new Date(ticket.ngayHoanTat).toLocaleDateString('vi-VN') : '-'}</td>
                         <td className="action-buttons">
-                          <button 
-                            className="btn-icon btn-assign" 
+                          <button
+                            className="btn-icon btn-assign"
                             onClick={() => openAssignModal(ticket)}
                             title={ticket.nhanVienTiepNhanId ? 'Đổi nhân viên' : 'Gán nhân viên'}
                           >
@@ -1013,7 +1025,7 @@ export default function ManagerPage({ onLogout }) {
                 </button>
               )}
             </div>
-            
+
             <div className="table-container">
               <table className="data-table">
                 <thead>
@@ -1110,7 +1122,7 @@ export default function ManagerPage({ onLogout }) {
                 </button>
               )}
             </div>
-            
+
             <div className="table-container">
               <table className="data-table">
                 <thead>
@@ -1179,7 +1191,7 @@ export default function ManagerPage({ onLogout }) {
                 </button>
               )}
             </div>
-            
+
             <div className="table-container">
               <table className="data-table">
                 <thead>
@@ -1236,14 +1248,14 @@ export default function ManagerPage({ onLogout }) {
               <h3>{editingProduct ? '✏️ Sửa sản phẩm' : '➕ Thêm sản phẩm mới'}</h3>
               <button className="modal-close" onClick={() => setShowProductModal(false)}>×</button>
             </div>
-            
+
             <form onSubmit={editingProduct ? handleUpdateProduct : handleCreateProduct} className="modal-form">
               <div className="form-row">
                 <div className="form-group">
                   <label>Loại sản phẩm *</label>
                   <select
                     value={productForm.loaiSanPham}
-                    onChange={(e) => setProductForm({...productForm, loaiSanPham: e.target.value})}
+                    onChange={(e) => setProductForm({ ...productForm, loaiSanPham: e.target.value })}
                     required
                   >
                     <option value="Vot">Vợt</option>
@@ -1252,13 +1264,13 @@ export default function ManagerPage({ onLogout }) {
                     <option value="PhuKien">Phụ kiện</option>
                   </select>
                 </div>
-                
+
                 <div className="form-group">
                   <label>Thương hiệu</label>
                   <input
                     type="text"
                     value={productForm.thuongHieu}
-                    onChange={(e) => setProductForm({...productForm, thuongHieu: e.target.value})}
+                    onChange={(e) => setProductForm({ ...productForm, thuongHieu: e.target.value })}
                     placeholder="VD: Yonex, Victor..."
                   />
                 </div>
@@ -1269,7 +1281,7 @@ export default function ManagerPage({ onLogout }) {
                 <input
                   type="text"
                   value={productForm.tenSP}
-                  onChange={(e) => setProductForm({...productForm, tenSP: e.target.value})}
+                  onChange={(e) => setProductForm({ ...productForm, tenSP: e.target.value })}
                   placeholder="VD: Yonex Astrox 99"
                   required
                 />
@@ -1281,18 +1293,18 @@ export default function ManagerPage({ onLogout }) {
                   <input
                     type="text"
                     value={productForm.soSerial}
-                    onChange={(e) => setProductForm({...productForm, soSerial: e.target.value})}
+                    onChange={(e) => setProductForm({ ...productForm, soSerial: e.target.value })}
                     placeholder="VD: SN123456"
                     required
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label>Ngày mua</label>
                   <input
                     type="date"
                     value={productForm.ngayMua}
-                    onChange={(e) => setProductForm({...productForm, ngayMua: e.target.value})}
+                    onChange={(e) => setProductForm({ ...productForm, ngayMua: e.target.value })}
                   />
                 </div>
               </div>
@@ -1303,17 +1315,17 @@ export default function ManagerPage({ onLogout }) {
                   <input
                     type="number"
                     value={productForm.thoiHanBaoHanhThang}
-                    onChange={(e) => setProductForm({...productForm, thoiHanBaoHanhThang: parseInt(e.target.value)})}
+                    onChange={(e) => setProductForm({ ...productForm, thoiHanBaoHanhThang: parseInt(e.target.value) })}
                     min="1"
                     required
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label>Khách hàng</label>
                   <select
                     value={productForm.khachHangId}
-                    onChange={(e) => setProductForm({...productForm, khachHangId: e.target.value})}
+                    onChange={(e) => setProductForm({ ...productForm, khachHangId: e.target.value })}
                   >
                     <option value="">-- Chưa chọn --</option>
                     {customers.map(cust => (
@@ -1325,27 +1337,27 @@ export default function ManagerPage({ onLogout }) {
 
               <div className="form-group">
                 <label>Thông tin kỹ thuật</label>
-                <div style={{display:'grid',gridTemplateColumns:'1fr',gap:'0.5rem'}}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.5rem' }}>
                   <textarea
                     value={productForm.thongTinKyThuat?.moTa || ''}
-                    onChange={(e) => setProductForm({...productForm, thongTinKyThuat: {...(productForm.thongTinKyThuat||{}), moTa: e.target.value}})}
+                    onChange={(e) => setProductForm({ ...productForm, thongTinKyThuat: { ...(productForm.thongTinKyThuat || {}), moTa: e.target.value } })}
                     rows="3"
                     placeholder="Mô tả - VD: Sản phẩm chính hãng..."
                   />
-                  <div style={{display:'flex',gap:'0.75rem'}}>
+                  <div style={{ display: 'flex', gap: '0.75rem' }}>
                     <input
                       type="text"
                       value={productForm.thongTinKyThuat?.xuatXu || ''}
-                      onChange={(e) => setProductForm({...productForm, thongTinKyThuat: {...(productForm.thongTinKyThuat||{}), xuatXu: e.target.value}})}
+                      onChange={(e) => setProductForm({ ...productForm, thongTinKyThuat: { ...(productForm.thongTinKyThuat || {}), xuatXu: e.target.value } })}
                       placeholder="Xuất xứ"
-                      style={{flex:1}}
+                      style={{ flex: 1 }}
                     />
                     <input
                       type="text"
                       value={productForm.thongTinKyThuat?.trongLuong || ''}
-                      onChange={(e) => setProductForm({...productForm, thongTinKyThuat: {...(productForm.thongTinKyThuat||{}), trongLuong: e.target.value}})}
+                      onChange={(e) => setProductForm({ ...productForm, thongTinKyThuat: { ...(productForm.thongTinKyThuat || {}), trongLuong: e.target.value } })}
                       placeholder="Trọng lượng (VD: 85g)"
-                      style={{width:140}}
+                      style={{ width: 140 }}
                     />
                   </div>
                 </div>
@@ -1367,11 +1379,11 @@ export default function ManagerPage({ onLogout }) {
       {/* Ticket Detail Page / Modal */}
       {showTicketDetail && selectedTicketDetail && (
         <div className="modal-overlay" onClick={() => setShowTicketDetail(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{maxWidth: '1000px'}}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '1000px' }}>
             <div className="product-detail-header-modern">
               <div className="product-header-icon">🧾</div>
               <div className="product-header-info">
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <div className="product-title">Phiếu bảo hành: {selectedTicketDetail.maPhieu}</div>
                     <div className="product-meta-row">
@@ -1380,9 +1392,9 @@ export default function ManagerPage({ onLogout }) {
                       <div className="product-serial">{selectedTicketDetail.sanPhamId?.soSerial || ''}</div>
                     </div>
                   </div>
-                  <div style={{textAlign:'right'}}>
-                    <div style={{fontSize:'0.95rem',color:'#e6f2ff'}}>Ngày tiếp nhận</div>
-                    <div style={{fontWeight:700}}>{new Date(selectedTicketDetail.ngayTiepNhan).toLocaleString('vi-VN')}</div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '0.95rem', color: '#e6f2ff' }}>Ngày tiếp nhận</div>
+                    <div style={{ fontWeight: 700 }}>{new Date(selectedTicketDetail.ngayTiepNhan).toLocaleString('vi-VN')}</div>
                   </div>
                 </div>
               </div>
@@ -1395,25 +1407,25 @@ export default function ManagerPage({ onLogout }) {
                     <div className="info-row-modern">
                       <div className="info-icon-modern">👤</div>
                       <div className="info-label-modern">Khách hàng</div>
-                      <div className="info-value-modern">{selectedTicketDetail.khachHangId?.hoTen || 'N/A'}<div style={{fontSize:'0.95rem',fontWeight:500,color:'#64748b'}}>{selectedTicketDetail.thongTinLienHe?.soDienThoai || selectedTicketDetail.khachHangId?.soDienThoai || ''}</div></div>
+                      <div className="info-value-modern">{selectedTicketDetail.khachHangId?.hoTen || 'N/A'}<div style={{ fontSize: '0.95rem', fontWeight: 500, color: '#64748b' }}>{selectedTicketDetail.thongTinLienHe?.soDienThoai || selectedTicketDetail.khachHangId?.soDienThoai || ''}</div></div>
                     </div>
 
                     <div className="info-row-modern">
                       <div className="info-icon-modern">🏸</div>
                       <div className="info-label-modern">Sản phẩm</div>
-                      <div className="info-value-modern">{selectedTicketDetail.sanPhamId?.tenSP || 'N/A'}<div style={{fontSize:'0.95rem',fontWeight:500,color:'#64748b'}}>{selectedTicketDetail.thongTinLienHe?.soSerial || selectedTicketDetail.sanPhamId?.soSerial || ''}</div></div>
+                      <div className="info-value-modern">{selectedTicketDetail.sanPhamId?.tenSP || 'N/A'}<div style={{ fontSize: '0.95rem', fontWeight: 500, color: '#64748b' }}>{selectedTicketDetail.thongTinLienHe?.soSerial || selectedTicketDetail.sanPhamId?.soSerial || ''}</div></div>
                     </div>
 
                     <div className="info-row-modern">
                       <div className="info-icon-modern">⚠️</div>
                       <div className="info-label-modern">Mô tả lỗi</div>
-                      <div className="info-value-modern" style={{whiteSpace:'pre-line'}}>{selectedTicketDetail.moTaLoi || 'N/A'}</div>
+                      <div className="info-value-modern" style={{ whiteSpace: 'pre-line' }}>{selectedTicketDetail.moTaLoi || 'N/A'}</div>
                     </div>
 
                     <div className="info-row-modern">
                       <div className="info-icon-modern">🔎</div>
                       <div className="info-label-modern">Dự đoán</div>
-                      <div className="info-value-modern">{selectedTicketDetail.loaiLoiDuDoan || '-'}</div>
+                      <div className="info-value-modern">{getPredictionText(selectedTicketDetail.loaiLoiDuDoan)}</div>
                     </div>
 
                     <div className="info-row-modern">
@@ -1425,7 +1437,7 @@ export default function ManagerPage({ onLogout }) {
                     <div className="info-row-modern">
                       <div className="info-icon-modern">💬</div>
                       <div className="info-label-modern">Ghi chú xử lý</div>
-                      <div className="info-value-modern" style={{whiteSpace:'pre-line'}}>{selectedTicketDetail.moTaXuLy || 'N/A'}</div>
+                      <div className="info-value-modern" style={{ whiteSpace: 'pre-line' }}>{selectedTicketDetail.moTaXuLy || 'N/A'}</div>
                     </div>
 
                   </div>
@@ -1434,13 +1446,13 @@ export default function ManagerPage({ onLogout }) {
                     <div className="tech-content-modern">Lịch sử tiến độ</div>
                     {selectedTicketDetail.moTaTienDo && selectedTicketDetail.moTaTienDo.length > 0 ? (
                       selectedTicketDetail.moTaTienDo.map((item, idx) => (
-                        <div key={idx} style={{padding:'0.6rem 0',borderBottom:'1px solid #eef2f7'}}>
-                          <div style={{fontSize:'0.95rem',color:'#64748b'}}>{new Date(item.thoiGian).toLocaleString('vi-VN')}</div>
-                          <div style={{fontWeight:600}}>{item.noiDung}</div>
+                        <div key={idx} style={{ padding: '0.6rem 0', borderBottom: '1px solid #eef2f7' }}>
+                          <div style={{ fontSize: '0.95rem', color: '#64748b' }}>{new Date(item.thoiGian).toLocaleString('vi-VN')}</div>
+                          <div style={{ fontWeight: 600 }}>{item.noiDung}</div>
                         </div>
                       ))
                     ) : (
-                      <div style={{padding:'0.6rem 0',color:'#64748b'}}>Chưa có tiến độ</div>
+                      <div style={{ padding: '0.6rem 0', color: '#64748b' }}>Chưa có tiến độ</div>
                     )}
                   </div>
                 </div>
@@ -1452,24 +1464,49 @@ export default function ManagerPage({ onLogout }) {
                       selectedTicketDetail.hinhAnhLoi.map((src, i) => {
                         const imageSrc = src && src.startsWith('http') ? src : `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${src}`
                         return (
-                          <img key={i} src={imageSrc} alt={`Lỗi ${i+1}`} style={{maxWidth:280,display:'block',margin:'8px auto',borderRadius:8}} />
+                          <img key={i} src={imageSrc} alt={`Lỗi ${i + 1}`} style={{ maxWidth: 280, display: 'block', margin: '8px auto', borderRadius: 8 }} />
                         )
                       })
                     ) : (
-                      <div style={{color:'#64748b'}}>Không có ảnh</div>
+                      <div style={{ color: '#64748b' }}>Không có ảnh</div>
                     )}
                   </div>
 
                   <div className="product-invoice-image-block">
                     <div className="invoice-label">Chi phí phát sinh</div>
-                    <div style={{fontWeight:700, fontSize:'1.2rem'}}>{(selectedTicketDetail.chiPhiPhatSinh || 0).toLocaleString('vi-VN')} đ</div>
+                    <div style={{ fontWeight: 700, fontSize: '1.2rem' }}>{(selectedTicketDetail.chiPhiPhatSinh || 0).toLocaleString('vi-VN')} đ</div>
                   </div>
 
                   <div className="product-invoice-image-block">
                     <div className="invoice-label">Trạng thái</div>
-                    <div style={{fontWeight:700}}>{getStatusBadge(selectedTicketDetail.trangThai).text}</div>
-                    <div style={{marginTop:6,fontSize:'0.95rem',color:'#64748b'}}>Ngày hoàn tất: {selectedTicketDetail.ngayHoanTat ? new Date(selectedTicketDetail.ngayHoanTat).toLocaleString('vi-VN') : '-'}</div>
+                    <div style={{ fontWeight: 700 }}>{getStatusBadge(selectedTicketDetail.trangThai).text}</div>
+                    <div style={{ marginTop: 6, fontSize: '0.95rem', color: '#64748b' }}>Ngày hoàn tất: {selectedTicketDetail.ngayHoanTat ? new Date(selectedTicketDetail.ngayHoanTat).toLocaleString('vi-VN') : '-'}</div>
                   </div>
+
+                  {/* Review Section */}
+                  {(selectedTicketDetail.qualityRating || selectedTicketDetail.qualityComments) && (
+                    <div className="product-invoice-image-block" style={{ marginTop: '1rem', borderTop: '1px solid #eef2f7', paddingTop: '1rem' }}>
+                      <div className="invoice-label">Đánh giá từ khách hàng</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                        <div style={{ color: '#fbbf24', fontSize: '1.2rem' }}>
+                          {Array.from({ length: 5 }).map((_, i) => (
+                            <span key={i} className={i < (selectedTicketDetail.qualityRating || 0) ? 'star active' : 'star'} style={{ opacity: i < (selectedTicketDetail.qualityRating || 0) ? 1 : 0.3 }}>★</span>
+                          ))}
+                        </div>
+                        <span style={{ fontWeight: 600 }}>{selectedTicketDetail.qualityRating}/5</span>
+                      </div>
+                      <div style={{
+                        backgroundColor: '#f8fafc',
+                        padding: '0.75rem',
+                        borderRadius: '6px',
+                        fontSize: '0.9rem',
+                        color: '#334155',
+                        fontStyle: 'italic'
+                      }}>
+                        "{selectedTicketDetail.qualityComments || 'Không có nhận xét'}"
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1489,14 +1526,14 @@ export default function ManagerPage({ onLogout }) {
               <h3>{editingEmployee ? '✏️ Sửa thông tin nhân viên' : '➕ Thêm nhân viên mới'}</h3>
               <button className="modal-close" onClick={() => { setShowEmployeeModal(false); setEditingEmployee(null); }}>×</button>
             </div>
-            
+
             <form onSubmit={editingEmployee ? handleUpdateEmployee : handleCreateEmployee} className="modal-form">
               <div className="form-group">
                 <label>Họ tên *</label>
                 <input
                   type="text"
                   value={employeeForm.hoTen}
-                  onChange={(e) => setEmployeeForm({...employeeForm, hoTen: e.target.value})}
+                  onChange={(e) => setEmployeeForm({ ...employeeForm, hoTen: e.target.value })}
                   placeholder="VD: Nguyễn Văn A"
                   required
                 />
@@ -1507,7 +1544,7 @@ export default function ManagerPage({ onLogout }) {
                 <input
                   type="email"
                   value={employeeForm.email}
-                  onChange={(e) => setEmployeeForm({...employeeForm, email: e.target.value})}
+                  onChange={(e) => setEmployeeForm({ ...employeeForm, email: e.target.value })}
                   placeholder="email@example.com"
                   required
                 />
@@ -1518,7 +1555,7 @@ export default function ManagerPage({ onLogout }) {
                 <input
                   type="password"
                   value={employeeForm.matKhau}
-                  onChange={(e) => setEmployeeForm({...employeeForm, matKhau: e.target.value})}
+                  onChange={(e) => setEmployeeForm({ ...employeeForm, matKhau: e.target.value })}
                   placeholder={editingEmployee ? 'Để trống nếu không muốn đổi mật khẩu' : '••••••••'}
                   {...(editingEmployee ? {} : { required: true, minLength: 6 })}
                 />
@@ -1528,7 +1565,7 @@ export default function ManagerPage({ onLogout }) {
                 <label>Chức vụ *</label>
                 <select
                   value={employeeForm.chucVu}
-                  onChange={(e) => setEmployeeForm({...employeeForm, chucVu: e.target.value})}
+                  onChange={(e) => setEmployeeForm({ ...employeeForm, chucVu: e.target.value })}
                   required
                 >
                   <option value="nhanvien">Nhân viên</option>
@@ -1563,7 +1600,7 @@ export default function ManagerPage({ onLogout }) {
               </div>
               <button className="modal-close-modern" onClick={() => setShowAssignModal(false)}>✕</button>
             </div>
-            
+
             <div className="modal-body-modern">
               {/* Ticket Info Card */}
               <div className="assign-ticket-card">
@@ -1630,9 +1667,8 @@ export default function ManagerPage({ onLogout }) {
                     {employees.filter(emp => emp.chucVu === 'nhanvien').map(emp => (
                       <button
                         key={emp._id}
-                        className={`employee-select-card ${
-                          selectedTicket.nhanVienTiepNhanId?._id === emp._id ? 'current' : ''
-                        }`}
+                        className={`employee-select-card ${selectedTicket.nhanVienTiepNhanId?._id === emp._id ? 'current' : ''
+                          }`}
                         onClick={() => handleAssignEmployee(emp._id)}
                         disabled={loading}
                       >
@@ -1710,33 +1746,33 @@ export default function ManagerPage({ onLogout }) {
                         } else {
                           kh = customers.find(c => c._id === selectedProductDetail.khachHangId);
                         }
-                        return kh ? <><b>{kh.hoTen}</b><br /><span style={{fontWeight:400}}>{kh.email}</span></> : 'N/A';
+                        return kh ? <><b>{kh.hoTen}</b><br /><span style={{ fontWeight: 400 }}>{kh.email}</span></> : 'N/A';
                       })()}</span>
                     </div>
                     <div className="info-row-fw tech-fw">
                       <span className="info-icon-fw">🛠️</span>
                       <span className="info-label-fw">Thông tin kỹ thuật</span>
-                      <div className="info-value-fw tech-content-fw" style={{padding:0,margin:0}}>
+                      <div className="info-value-fw tech-content-fw" style={{ padding: 0, margin: 0 }}>
                         {selectedProductDetail?.thongTinKyThuat
                           ? (typeof selectedProductDetail.thongTinKyThuat === 'object'
-                              ? (
-                                <div className="tech-table-fw">
-                                  {Object.entries(selectedProductDetail.thongTinKyThuat).map(([key, value]) =>
-                                    key === 'moTa' ? (
-                                      <div className="tech-row-fw tech-row-desc-fw" key={key}>
-                                        <span className="tech-label-fw">Mô tả</span>
-                                        <div className="tech-value-fw tech-desc-fw">{value}</div>
-                                      </div>
-                                    ) : (
-                                      <div className="tech-row-fw" key={key}>
-                                        <span className="tech-label-fw">{key === 'xuatXu' ? 'Xuất xứ' : key === 'trongLuong' ? 'Trọng lượng' : key}</span>
-                                        <div className="tech-value-fw plain-value-fw">{value}</div>
-                                      </div>
-                                    )
-                                  )}
-                                </div>
-                              )
-                              : <span>{selectedProductDetail.thongTinKyThuat}</span>)
+                            ? (
+                              <div className="tech-table-fw">
+                                {Object.entries(selectedProductDetail.thongTinKyThuat).map(([key, value]) =>
+                                  key === 'moTa' ? (
+                                    <div className="tech-row-fw tech-row-desc-fw" key={key}>
+                                      <span className="tech-label-fw">Mô tả</span>
+                                      <div className="tech-value-fw tech-desc-fw">{value}</div>
+                                    </div>
+                                  ) : (
+                                    <div className="tech-row-fw" key={key}>
+                                      <span className="tech-label-fw">{key === 'xuatXu' ? 'Xuất xứ' : key === 'trongLuong' ? 'Trọng lượng' : key}</span>
+                                      <div className="tech-value-fw plain-value-fw">{value}</div>
+                                    </div>
+                                  )
+                                )}
+                              </div>
+                            )
+                            : <span>{selectedProductDetail.thongTinKyThuat}</span>)
                           : 'N/A'}
                       </div>
                     </div>

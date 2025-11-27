@@ -8,7 +8,7 @@ export default function EmployeePage({ onLogout }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  
+
   // Data states
   const [myTasks, setMyTasks] = useState([])
   const [selectedTicket, setSelectedTicket] = useState(null)
@@ -18,13 +18,13 @@ export default function EmployeePage({ onLogout }) {
     inProgress: 0,
     completed: 0
   })
-  
+
   // Filter states
   const [filterStatus, setFilterStatus] = useState('all') // all, tiep_nhan, dang_kiem_tra, dang_sua, hoan_tat
   const [searchText, setSearchText] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
-  
+
   // Form states
   const [inspectionForm, setInspectionForm] = useState({
     loaiLoiDuDoan: 'loi_nsx',
@@ -32,18 +32,18 @@ export default function EmployeePage({ onLogout }) {
     canThayThe: false,
     linhKienCanThay: ''
   })
-  
+
   const [repairForm, setRepairForm] = useState({
     ghiChu: '',
     chiPhiPhatSinh: 0
   })
-  
+
   const [unableReason, setUnableReason] = useState('')
   const [showInspectModal, setShowInspectModal] = useState(false)
   const [showRepairModal, setShowRepairModal] = useState(false)
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [showUnableModal, setShowUnableModal] = useState(false)
-  
+
   // Progress & Upload states
   const [progressUpdate, setProgressUpdate] = useState({
     ticketId: '',
@@ -70,10 +70,10 @@ export default function EmployeePage({ onLogout }) {
       setError('')
       const data = await employeeAPI.getMyTasks()
       console.log('📋 My tasks:', data)
-      
+
       const tasks = data.tickets || data.tasks || []
       setMyTasks(tasks)
-      
+
       // Calculate stats
       setStats({
         total: tasks.length,
@@ -101,7 +101,7 @@ export default function EmployeePage({ onLogout }) {
     // Filter by search text
     if (searchText.trim()) {
       const search = searchText.toLowerCase()
-      filtered = filtered.filter(task => 
+      filtered = filtered.filter(task =>
         task.maPhieu?.toLowerCase().includes(search) ||
         task.sanPhamId?.tenSP?.toLowerCase().includes(search) ||
         task.khachHangId?.hoTen?.toLowerCase().includes(search) ||
@@ -112,7 +112,7 @@ export default function EmployeePage({ onLogout }) {
     // Filter by date range (based on ngayTiepNhan)
     if (dateFrom) {
       const from = new Date(dateFrom)
-      from.setHours(0,0,0,0)
+      from.setHours(0, 0, 0, 0)
       filtered = filtered.filter(task => {
         if (!task.ngayTiepNhan) return false
         const t = new Date(task.ngayTiepNhan)
@@ -121,7 +121,7 @@ export default function EmployeePage({ onLogout }) {
     }
     if (dateTo) {
       const to = new Date(dateTo)
-      to.setHours(23,59,59,999)
+      to.setHours(23, 59, 59, 999)
       filtered = filtered.filter(task => {
         if (!task.ngayTiepNhan) return false
         const t = new Date(task.ngayTiepNhan)
@@ -137,9 +137,9 @@ export default function EmployeePage({ onLogout }) {
     try {
       setLoading(true)
       setError('')
-      
+
       await employeeAPI.inspectProduct(selectedTicket._id, inspectionForm)
-      
+
       setSuccess('✅ Đã bắt đầu kiểm tra sản phẩm')
       setShowInspectModal(false)
       setInspectionForm({
@@ -162,9 +162,9 @@ export default function EmployeePage({ onLogout }) {
     try {
       setLoading(true)
       setError('')
-      
+
       await employeeAPI.completeRepair(selectedTicket._id, repairForm)
-      
+
       setSuccess('✅ Đã hoàn tất sửa chữa')
       setShowRepairModal(false)
       setRepairForm({ ghiChu: '', chiPhiPhatSinh: 0 })
@@ -181,9 +181,9 @@ export default function EmployeePage({ onLogout }) {
     try {
       setLoading(true)
       setError('')
-      
+
       await employeeAPI.markUnableToRepair(selectedTicket._id, unableReason)
-      
+
       setSuccess('✅ Đã đánh dấu không thể sửa')
       setShowUnableModal(false)
       setUnableReason('')
@@ -201,16 +201,16 @@ export default function EmployeePage({ onLogout }) {
     try {
       setLoading(true)
       setError('')
-      
+
       if (!progressUpdate.ticketId) {
         setError('Không tìm thấy phiếu bảo hành')
         return
       }
-      
+
       await employeeAPI.updateRepairProgress(progressUpdate.ticketId, {
         moTaTienDo: progressUpdate.moTaTienDo
       })
-      
+
       setSuccess('✅ Cập nhật tiến độ thành công')
       setProgressUpdate({ ticketId: '', moTaTienDo: '' })
       loadMyTasks()
@@ -224,7 +224,7 @@ export default function EmployeePage({ onLogout }) {
   const handleImageSelect = (e) => {
     const files = Array.from(e.target.files)
     setUploadImages(files)
-    
+
     // Create previews
     const previews = files.map(file => URL.createObjectURL(file))
     setImagePreview(previews)
@@ -235,7 +235,7 @@ export default function EmployeePage({ onLogout }) {
     try {
       setLoading(true)
       setError('')
-      
+
       if (uploadImages.length === 0) {
         setError('Vui lòng chọn ít nhất 1 hình ảnh')
         return
@@ -245,19 +245,19 @@ export default function EmployeePage({ onLogout }) {
         setError('Không tìm thấy phiếu bảo hành')
         return
       }
-      
+
       // Convert images to base64 or URLs (simplified version)
       const imageUrls = uploadImages.map(img => img.name) // TODO: Implement proper file upload
-      
+
       await employeeAPI.uploadRepairImages(progressUpdate.ticketId, imageUrls)
-      
+
       setSuccess(`✅ Đã tải lên ${uploadImages.length} hình ảnh`)
       setUploadImages([])
-      
+
       // Clean up preview URLs
       imagePreview.forEach(url => URL.revokeObjectURL(url))
       setImagePreview([])
-      
+
       loadMyTasks()
     } catch (err) {
       setError(err.message)
@@ -353,14 +353,14 @@ export default function EmployeePage({ onLogout }) {
         {activeTab === 'settings' && (
           <div className="settings-section">
             <h2 className="section-title">⚙️ Cài đặt tài khoản</h2>
-            <SettingsPage onSaved={(u) => {}} />
+            <SettingsPage onSaved={(u) => { }} />
           </div>
         )}
         {/* Dashboard Tab */}
         {activeTab === 'dashboard' && (
           <div className="dashboard-section">
             <h2 className="section-title">📊 Tổng quan công việc</h2>
-            
+
             {/* Stats Cards */}
             <div className="stats-grid">
               <div className="stat-card total">
@@ -370,7 +370,7 @@ export default function EmployeePage({ onLogout }) {
                   <div className="stat-value">{stats.total}</div>
                 </div>
               </div>
-              
+
               <div className="stat-card pending">
                 <div className="stat-icon">📥</div>
                 <div className="stat-info">
@@ -378,7 +378,7 @@ export default function EmployeePage({ onLogout }) {
                   <div className="stat-value">{stats.pending}</div>
                 </div>
               </div>
-              
+
               <div className="stat-card progress">
                 <div className="stat-icon">🔧</div>
                 <div className="stat-info">
@@ -386,7 +386,7 @@ export default function EmployeePage({ onLogout }) {
                   <div className="stat-value">{stats.inProgress}</div>
                 </div>
               </div>
-              
+
               <div className="stat-card completed">
                 <div className="stat-icon">✅</div>
                 <div className="stat-info">
@@ -400,7 +400,7 @@ export default function EmployeePage({ onLogout }) {
             <div className="recent-tasks">
               <h3>📌 Công việc gần đây</h3>
               {loading && <div className="loading-spinner">⏳ Đang tải...</div>}
-              
+
               {!loading && myTasks.length === 0 && (
                 <div className="empty-state">
                   <div className="empty-icon">📭</div>
@@ -412,7 +412,7 @@ export default function EmployeePage({ onLogout }) {
                 {myTasks.slice(0, 6).map(task => {
                   const badge = getStatusBadge(task.trangThai)
                   const priority = getPriorityColor(task.ngayTiepNhan)
-                  
+
                   return (
                     <div key={task._id} className={`task-card priority-${priority}`}>
                       <div className="task-header">
@@ -421,7 +421,7 @@ export default function EmployeePage({ onLogout }) {
                           {badge.icon} {badge.text}
                         </span>
                       </div>
-                      
+
                       <div className="task-body">
                         <h4>{task.sanPhamId?.tenSP || 'Sản phẩm'}</h4>
                         <p className="task-customer">
@@ -432,7 +432,7 @@ export default function EmployeePage({ onLogout }) {
                           📅 {new Date(task.ngayTiepNhan).toLocaleDateString('vi-VN')}
                         </p>
                       </div>
-                      
+
                       <div className="task-footer">
                         <button
                           className="btn-view"
@@ -466,9 +466,9 @@ export default function EmployeePage({ onLogout }) {
             <div className="filter-section">
               <div className="filter-group">
                 <label htmlFor="status-filter">🏷️ Trạng thái:</label>
-                <select 
+                <select
                   id="status-filter"
-                  value={filterStatus} 
+                  value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value)}
                   className="filter-select"
                 >
@@ -491,7 +491,7 @@ export default function EmployeePage({ onLogout }) {
                   className="filter-input"
                 />
                 {searchText && (
-                  <button 
+                  <button
                     className="btn-clear-search"
                     onClick={() => setSearchText('')}
                     title="Xóa tìm kiếm"
@@ -503,7 +503,7 @@ export default function EmployeePage({ onLogout }) {
 
               <div className="filter-group">
                 <label>📅 Khoảng ngày:</label>
-                <div style={{display:'flex',gap:'0.6rem'}}>
+                <div style={{ display: 'flex', gap: '0.6rem' }}>
                   <input
                     type="date"
                     value={dateFrom}
@@ -521,13 +521,13 @@ export default function EmployeePage({ onLogout }) {
             </div>
 
             {loading && <div className="loading-spinner">⏳ Đang tải...</div>}
-            
+
             {!loading && getFilteredTasks().length === 0 && (
               <div className="empty-state">
                 <div className="empty-icon">📭</div>
                 <p>{searchText || filterStatus !== 'all' ? 'Không tìm thấy kết quả phù hợp' : 'Không có công việc nào'}</p>
                 {(searchText || filterStatus !== 'all') && (
-                  <button 
+                  <button
                     className="btn-reset-filter"
                     onClick={() => {
                       setSearchText('')
@@ -587,7 +587,7 @@ export default function EmployeePage({ onLogout }) {
                                 🔍
                               </button>
                             )}
-                            
+
                             {/* Trạng thái đang xử lý - 1 nút Quản lý gộp tất cả */}
                             {(task.trangThai === 'dang_kiem_tra' || task.trangThai === 'dang_sua') && (
                               <button
@@ -604,7 +604,7 @@ export default function EmployeePage({ onLogout }) {
                                 🔧
                               </button>
                             )}
-                            
+
                             {/* Nút chi tiết cho các trạng thái khác */}
                             {task.trangThai !== 'dang_kiem_tra' && task.trangThai !== 'dang_sua' && (
                               <button
@@ -637,7 +637,7 @@ export default function EmployeePage({ onLogout }) {
               <h3>🔍 Kiểm tra sản phẩm</h3>
               <button className="modal-close" onClick={() => setShowInspectModal(false)}>✕</button>
             </div>
-            
+
             <div className="modal-body">
               <div className="ticket-info">
                 <p><strong>Mã phiếu:</strong> {selectedTicket.maPhieu}</p>
@@ -651,7 +651,7 @@ export default function EmployeePage({ onLogout }) {
                   <label>Loại lỗi dự đoán *</label>
                   <select
                     value={inspectionForm.loaiLoiDuDoan}
-                    onChange={(e) => setInspectionForm({...inspectionForm, loaiLoiDuDoan: e.target.value})}
+                    onChange={(e) => setInspectionForm({ ...inspectionForm, loaiLoiDuDoan: e.target.value })}
                     required
                   >
                     <option value="loi_nsx">Lỗi nhà sản xuất</option>
@@ -664,7 +664,7 @@ export default function EmployeePage({ onLogout }) {
                   <label>Mô tả kết quả kiểm tra *</label>
                   <textarea
                     value={inspectionForm.moTaKiemTra}
-                    onChange={(e) => setInspectionForm({...inspectionForm, moTaKiemTra: e.target.value})}
+                    onChange={(e) => setInspectionForm({ ...inspectionForm, moTaKiemTra: e.target.value })}
                     placeholder="Nhập kết quả kiểm tra chi tiết..."
                     rows="4"
                     required
@@ -676,7 +676,7 @@ export default function EmployeePage({ onLogout }) {
                     <input
                       type="checkbox"
                       checked={inspectionForm.canThayThe}
-                      onChange={(e) => setInspectionForm({...inspectionForm, canThayThe: e.target.checked})}
+                      onChange={(e) => setInspectionForm({ ...inspectionForm, canThayThe: e.target.checked })}
                     />
                     <span>Cần thay thế linh kiện</span>
                   </label>
@@ -688,7 +688,7 @@ export default function EmployeePage({ onLogout }) {
                     <input
                       type="text"
                       value={inspectionForm.linhKienCanThay}
-                      onChange={(e) => setInspectionForm({...inspectionForm, linhKienCanThay: e.target.value})}
+                      onChange={(e) => setInspectionForm({ ...inspectionForm, linhKienCanThay: e.target.value })}
                       placeholder="VD: Dây đan, grip..."
                     />
                   </div>
@@ -716,7 +716,7 @@ export default function EmployeePage({ onLogout }) {
               <h3>✅ Hoàn tất sửa chữa</h3>
               <button className="modal-close" onClick={() => setShowRepairModal(false)}>✕</button>
             </div>
-            
+
             <div className="modal-body">
               <div className="ticket-info">
                 <p><strong>Mã phiếu:</strong> {selectedTicket.maPhieu}</p>
@@ -728,7 +728,7 @@ export default function EmployeePage({ onLogout }) {
                   <label>Ghi chú hoàn tất *</label>
                   <textarea
                     value={repairForm.ghiChu}
-                    onChange={(e) => setRepairForm({...repairForm, ghiChu: e.target.value})}
+                    onChange={(e) => setRepairForm({ ...repairForm, ghiChu: e.target.value })}
                     placeholder="Mô tả công việc đã thực hiện..."
                     rows="4"
                     required
@@ -740,7 +740,7 @@ export default function EmployeePage({ onLogout }) {
                   <input
                     type="number"
                     value={repairForm.chiPhiPhatSinh}
-                    onChange={(e) => setRepairForm({...repairForm, chiPhiPhatSinh: Number(e.target.value)})}
+                    onChange={(e) => setRepairForm({ ...repairForm, chiPhiPhatSinh: Number(e.target.value) })}
                     min="0"
                     placeholder="0"
                   />
@@ -768,7 +768,7 @@ export default function EmployeePage({ onLogout }) {
               <h3>⚠️ Không thể sửa chữa</h3>
               <button className="modal-close" onClick={() => setShowUnableModal(false)}>✕</button>
             </div>
-            
+
             <div className="modal-body">
               <div className="ticket-info">
                 <p><strong>Mã phiếu:</strong> {selectedTicket.maPhieu}</p>
@@ -787,8 +787,8 @@ export default function EmployeePage({ onLogout }) {
               </div>
 
               <div className="modal-actions">
-                <button 
-                  className="btn-danger" 
+                <button
+                  className="btn-danger"
                   onClick={handleMarkUnableToRepair}
                   disabled={loading || !unableReason.trim()}
                 >
@@ -817,7 +817,7 @@ export default function EmployeePage({ onLogout }) {
               </div>
               <button className="modal-close-modern" onClick={() => setShowDetailModal(false)}>✕</button>
             </div>
-            
+
             <div className="modal-body-modern">
               {/* Status Card */}
               <div className="status-highlight-card">
@@ -917,12 +917,12 @@ export default function EmployeePage({ onLogout }) {
                 <div className="issue-card-body">
                   {/* Hình ảnh lỗi (mảng đường dẫn ngắn) */}
                   {selectedTicket.hinhAnhLoi && selectedTicket.hinhAnhLoi.length > 0 && (
-                    <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:8}}>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
                       {selectedTicket.hinhAnhLoi.map((p, idx) => {
                         const src = p && p.startsWith('http') ? p : `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${p}`
                         return (
-                          <a key={idx} href={src} target="_blank" rel="noreferrer" style={{display:'inline-block'}}>
-                            <img src={src} alt={`Lỗi ${idx+1}`} style={{width:140,height:90,objectFit:'cover',borderRadius:6,border:'1px solid #e6eefc'}} />
+                          <a key={idx} href={src} target="_blank" rel="noreferrer" style={{ display: 'inline-block' }}>
+                            <img src={src} alt={`Lỗi ${idx + 1}`} style={{ width: 140, height: 90, objectFit: 'cover', borderRadius: 6, border: '1px solid #e6eefc' }} />
                           </a>
                         )
                       })}
@@ -931,7 +931,7 @@ export default function EmployeePage({ onLogout }) {
 
                   {/* Các tệp đính kèm chi tiết */}
                   {selectedTicket.tepDinhKem && selectedTicket.tepDinhKem.length > 0 ? (
-                    <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       {(() => {
                         const normalize = (p) => p && (p.startsWith('http') ? p : `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${p}`)
                         const imageSet = new Set((selectedTicket.hinhAnhLoi || []).map(normalize))
@@ -946,17 +946,17 @@ export default function EmployeePage({ onLogout }) {
                           const src = f.duLieu && (f.duLieu.startsWith('http') ? f.duLieu : `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${f.duLieu}`)
                           const isImage = typeof f.kieuNoiDung === 'string' && f.kieuNoiDung.startsWith('image/')
                           return (
-                            <div key={i} style={{display:'flex',alignItems:'center',gap:10}}>
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                               {isImage ? (
                                 <a href={src} target="_blank" rel="noreferrer">
-                                  <img src={src} alt={f.tenTep || `Tệp ${i+1}`} style={{width:120,height:80,objectFit:'cover',borderRadius:6,border:'1px solid #eef4ff'}} />
+                                  <img src={src} alt={f.tenTep || `Tệp ${i + 1}`} style={{ width: 120, height: 80, objectFit: 'cover', borderRadius: 6, border: '1px solid #eef4ff' }} />
                                 </a>
                               ) : (
-                                <div style={{width:48,height:48,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:6,background:'#fff',border:'1px solid #f0f3f7'}}>📎</div>
+                                <div style={{ width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, background: '#fff', border: '1px solid #f0f3f7' }}>📎</div>
                               )}
-                              <div style={{display:'flex',flexDirection:'column'}}>
-                                <a href={src} target="_blank" rel="noreferrer" style={{fontWeight:700,color:'#0b4ed8'}}>{f.tenTep || `Tệp ${i+1}`}</a>
-                                <div style={{fontSize:'0.85rem',color:'#64748b'}}>{f.kieuNoiDung || ''} · {f.kichThuoc ? formatAttachmentSize(f.kichThuoc) : ''}</div>
+                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <a href={src} target="_blank" rel="noreferrer" style={{ fontWeight: 700, color: '#0b4ed8' }}>{f.tenTep || `Tệp ${i + 1}`}</a>
+                                <div style={{ fontSize: '0.85rem', color: '#64748b' }}>{f.kieuNoiDung || ''} · {f.kichThuoc ? formatAttachmentSize(f.kichThuoc) : ''}</div>
                               </div>
                             </div>
                           )
@@ -964,103 +964,103 @@ export default function EmployeePage({ onLogout }) {
                       })()}
                     </div>
                   ) : (
-                    <div style={{color:'#64748b'}}>Không có tệp đính kèm.</div>
+                    <div style={{ color: '#64748b' }}>Không có tệp đính kèm.</div>
                   )}
                 </div>
               </div>
 
-                {/* Quản lý sửa chữa - chỉ hiện khi đang xử lý */}
-                {(selectedTicket.trangThai === 'dang_kiem_tra' || selectedTicket.trangThai === 'dang_sua') && (
-                  <div className="detail-section detail-full management-section">
-                    <h4>🔧 Quản lý sửa chữa</h4>
-                    
-                    {/* Cập nhật tiến độ */}
-                    <div className="management-card">
-                      <h5>📝 Cập nhật tiến độ</h5>
-                      <form onSubmit={handleUpdateProgress}>
-                        <div className="form-group">
-                          <textarea
-                            value={progressUpdate.moTaTienDo}
-                            onChange={(e) => setProgressUpdate({...progressUpdate, moTaTienDo: e.target.value})}
-                            placeholder="Mô tả công việc đã làm và kế hoạch tiếp theo..."
-                            rows="3"
-                          />
-                        </div>
-                        <button type="submit" className="btn-small btn-primary" disabled={loading || !progressUpdate.moTaTienDo.trim()}>
-                          {loading ? '⏳ Đang cập nhật...' : '📝 Cập nhật tiến độ'}
-                        </button>
-                      </form>
-                    </div>
+              {/* Quản lý sửa chữa - chỉ hiện khi đang xử lý */}
+              {(selectedTicket.trangThai === 'dang_kiem_tra' || selectedTicket.trangThai === 'dang_sua') && (
+                <div className="detail-section detail-full management-section">
+                  <h4>🔧 Quản lý sửa chữa</h4>
 
-                    {/* Upload hình ảnh */}
-                    <div className="management-card">
-                      <h5>📷 Upload hình ảnh</h5>
-                      <form onSubmit={handleUploadImages}>
-                        <div className="form-group">
-                          <input
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            onChange={handleImageSelect}
-                            id={`image-upload-${selectedTicket._id}`}
-                            style={{ display: 'none' }}
-                          />
-                          <label htmlFor={`image-upload-${selectedTicket._id}`} className="upload-label-compact">
-                            📁 Chọn hình ảnh ({uploadImages.length} đã chọn)
-                          </label>
-                          
-                          {imagePreview.length > 0 && (
-                            <div className="image-preview-compact">
-                              {imagePreview.map((url, idx) => (
-                                <div key={idx} className="preview-thumb">
-                                  <img src={url} alt={`Preview ${idx + 1}`} />
-                                  <button
-                                    type="button"
-                                    className="remove-thumb"
-                                    onClick={() => {
-                                      const newImages = uploadImages.filter((_, i) => i !== idx)
-                                      const newPreviews = imagePreview.filter((_, i) => i !== idx)
-                                      setUploadImages(newImages)
-                                      URL.revokeObjectURL(url)
-                                      setImagePreview(newPreviews)
-                                    }}
-                                  >
-                                    ✕
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <button type="submit" className="btn-small btn-primary" disabled={loading || uploadImages.length === 0}>
-                          {loading ? '⏳ Đang tải...' : `📷 Tải lên ${uploadImages.length} ảnh`}
-                        </button>
-                      </form>
-                    </div>
-
-                    {/* Các hành động */}
-                    <div className="management-actions">
-                      <button
-                        className="btn-complete-large"
-                        onClick={() => {
-                          setShowDetailModal(false)
-                          setShowRepairModal(true)
-                        }}
-                      >
-                        ✅ Hoàn tất sửa chữa
+                  {/* Cập nhật tiến độ */}
+                  <div className="management-card">
+                    <h5>📝 Cập nhật tiến độ</h5>
+                    <form onSubmit={handleUpdateProgress}>
+                      <div className="form-group">
+                        <textarea
+                          value={progressUpdate.moTaTienDo}
+                          onChange={(e) => setProgressUpdate({ ...progressUpdate, moTaTienDo: e.target.value })}
+                          placeholder="Mô tả công việc đã làm và kế hoạch tiếp theo..."
+                          rows="3"
+                        />
+                      </div>
+                      <button type="submit" className="btn-small btn-primary" disabled={loading || !progressUpdate.moTaTienDo.trim()}>
+                        {loading ? '⏳ Đang cập nhật...' : '📝 Cập nhật tiến độ'}
                       </button>
-                      <button
-                        className="btn-unable-large"
-                        onClick={() => {
-                          setShowDetailModal(false)
-                          setShowUnableModal(true)
-                        }}
-                      >
-                        ⚠️ Không thể sửa
-                      </button>
-                    </div>
+                    </form>
                   </div>
-                )}
+
+                  {/* Upload hình ảnh */}
+                  <div className="management-card">
+                    <h5>📷 Upload hình ảnh</h5>
+                    <form onSubmit={handleUploadImages}>
+                      <div className="form-group">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={handleImageSelect}
+                          id={`image-upload-${selectedTicket._id}`}
+                          style={{ display: 'none' }}
+                        />
+                        <label htmlFor={`image-upload-${selectedTicket._id}`} className="upload-label-compact">
+                          📁 Chọn hình ảnh ({uploadImages.length} đã chọn)
+                        </label>
+
+                        {imagePreview.length > 0 && (
+                          <div className="image-preview-compact">
+                            {imagePreview.map((url, idx) => (
+                              <div key={idx} className="preview-thumb">
+                                <img src={url} alt={`Preview ${idx + 1}`} />
+                                <button
+                                  type="button"
+                                  className="remove-thumb"
+                                  onClick={() => {
+                                    const newImages = uploadImages.filter((_, i) => i !== idx)
+                                    const newPreviews = imagePreview.filter((_, i) => i !== idx)
+                                    setUploadImages(newImages)
+                                    URL.revokeObjectURL(url)
+                                    setImagePreview(newPreviews)
+                                  }}
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <button type="submit" className="btn-small btn-primary" disabled={loading || uploadImages.length === 0}>
+                        {loading ? '⏳ Đang tải...' : `📷 Tải lên ${uploadImages.length} ảnh`}
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* Các hành động */}
+                  <div className="management-actions">
+                    <button
+                      className="btn-complete-large"
+                      onClick={() => {
+                        setShowDetailModal(false)
+                        setShowRepairModal(true)
+                      }}
+                    >
+                      ✅ Hoàn tất sửa chữa
+                    </button>
+                    <button
+                      className="btn-unable-large"
+                      onClick={() => {
+                        setShowDetailModal(false)
+                        setShowUnableModal(true)
+                      }}
+                    >
+                      ⚠️ Không thể sửa
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div className="modal-actions">
                 <button className="btn-secondary" onClick={() => {
