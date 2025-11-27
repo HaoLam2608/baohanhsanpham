@@ -37,10 +37,27 @@ const PhieuSchema = new mongoose.Schema({
         maLinhKien: String,
         chiPhi: { type: Number, default: 0 }
     }],
+    linhKienSuDung: [{
+        linhKienId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'LinhKien'
+        },
+        tenLinhKien: String,
+        soLuong: {
+            type: Number,
+            required: true,
+            min: 1
+        },
+        donGia: Number,
+        thanhTien: Number
+    }],
     hinhAnhSua: [String],
-    chiPhiPhatSinh: { type: Number, default: 0 },
 
-    // Trạng thái và thời gian
+    // Chi phí và thanh toán
+    tongTienLinhKien: { type: Number, default: 0 }, // Tổng tiền linh kiện (tự động tính)
+    chiPhiPhatSinh: { type: Number, default: 0 },   // Chi phí phát sinh khác (nhập thủ công)
+    tongTien: { type: Number, default: 0 },          // Tổng cộng = tongTienLinhKien + chiPhiPhatSinh
+
     trangThai: {
         type: String,
         enum: ['dang_cho', 'tiep_nhan', 'dang_kiem_tra', 'dang_sua', 'hoan_tat', 'tu_choi'],

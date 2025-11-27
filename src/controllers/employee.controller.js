@@ -1,5 +1,6 @@
 const PhieuBaoHanh = require('../models/phieubaohanh');
 const SanPham = require('../models/sanpham');
+const LinhKien = require('../models/linhkien');
 
 // Lấy công việc được gán cho nhân viên
 exports.getMyTasks = async (req, res) => {
@@ -111,7 +112,13 @@ exports.completeRepair = async (req, res) => {
         // Cập nhật thông tin hoàn tất
         ticket.moTaXuLy = moTaXuLy;
         ticket.linhKienThayThe = linhKienThayThe || [];
+
+        // Lưu chi phí phát sinh (không cộng, chỉ lưu giá trị mới)
         ticket.chiPhiPhatSinh = chiPhiPhatSinh || 0;
+
+        // Tính tổng tiền = tongTienLinhKien + chiPhiPhatSinh
+        ticket.tongTien = (ticket.tongTienLinhKien || 0) + (ticket.chiPhiPhatSinh || 0);
+
         ticket.trangThai = 'hoan_tat';
         ticket.ngayHoanTat = new Date();
 
@@ -216,6 +223,51 @@ exports.uploadRepairImages = async (req, res) => {
         await ticket.save();
 
         res.json({ message: 'Upload hình ảnh thành công', data: ticket });
+    } catch (err) {
+        res.status(500).json({ message: 'Lỗi server', error: err.message });
+    }
+};
+
+// Thêm linh kiện vào phiếu bảo hành
+exports.addPartToTicket = async (req, res) => {
+    try {
+        const { ticketId } = req.params;
+        const { linhKienId, soLuong } = req.body;
+
+        const ticket = await PhieuBaoHanh.findById(ticketId);
+        if (!ticket) return res.status(404).json({ message: 'Phiếu không tồn tại' });
+
+        const part = await LinhKien.findById(linhKienId);
+        if (!part) return res.status(404).json({ message: 'Linh kiện không tồn tại' });
+
+        if (part.soLuongTon < soLuong) {
+            return res.status(400).json({ message: `Số lượng tồn kho không đủ (Còn: ${part.soLuongTon})` });
+        }
+
+        // Trừ kho
+        part.soLuongTon -= soLuong;
+        await part.save();
+
+        // Thêm vào phiếu
+        const item = {
+            linhKienId: part._id,
+            tenLinhKien: part.tenLinhKien,
+            soLuong,
+            donGia: part.giaXuat,
+            thanhTien: part.giaXuat * soLuong
+        };
+
+        ticket.linhKienSuDung.push(item);
+
+        // Tự động cộng chi phí linh kiện vào tongTienLinhKien
+        ticket.tongTienLinhKien = (ticket.tongTienLinhKien || 0) + item.thanhTien;
+
+        // Tính lại tổng tiền
+        ticket.tongTien = (ticket.tongTienLinhKien || 0) + (ticket.chiPhiPhatSinh || 0);
+
+        await ticket.save();
+
+        res.json({ message: 'Thêm linh kiện thành công', data: ticket });
     } catch (err) {
         res.status(500).json({ message: 'Lỗi server', error: err.message });
     }

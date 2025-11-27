@@ -25,6 +25,7 @@ app.use('/api/sanpham', require('./src/routes/sanpham.routes'));
 app.use('/api/khachhang', require('./src/routes/khachhang.routes'));
 app.use('/api/phieubaohanh', require('./src/routes/phieubaohanh.routes'));
 app.use('/api/nhanvien', require('./src/routes/nhanvien.routes'));
+app.use('/api/linhkien', require('./src/routes/linhkien.routes'));
 
 // Role-based routes
 app.use('/api/customer', require('./src/routes/customer.routes'));

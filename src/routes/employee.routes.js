@@ -24,4 +24,7 @@ router.get('/completed', protect, employeeController.getCompletedWork);
 // Đánh dấu không thể sửa
 router.post('/:ticketId/unable', protect, employeeController.markUnableToRepair);
 
+// Thêm linh kiện vào phiếu
+router.post('/:ticketId/add-part', protect, employeeController.addPartToTicket);
+
 module.exports = router;

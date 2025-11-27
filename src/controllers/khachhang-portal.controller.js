@@ -71,8 +71,11 @@ exports.trackWarrantyTicket = async (req, res) => {
             loaiLoiDuDoan: ticket.loaiLoiDuDoan,
             lichSuTrangThai: ticket.lichSuTrangThai,
             moTaTienDo: ticket.moTaTienDo,
-            chiPhiPhatSinh: ticket.chiPhiPhatSinh,
+            tongTienLinhKien: ticket.tongTienLinhKien || 0,
+            chiPhiPhatSinh: ticket.chiPhiPhatSinh || 0,
+            tongTien: ticket.tongTien || 0,
             linhKienThayThe: ticket.linhKienThayThe,
+            linhKienSuDung: ticket.linhKienSuDung || [],
             trangThaiThanhToan: ticket.trangThaiThanhToan,
             // Include attachments so frontend can display files
             tepDinhKem: ticket.tepDinhKem || [],
