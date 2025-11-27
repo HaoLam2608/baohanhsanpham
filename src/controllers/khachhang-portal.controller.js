@@ -40,6 +40,10 @@ exports.getWarrantyInfo = async (req, res) => {
                 hinhAnhLoi: attachment?.hinhAnhLoi || [],
                 tepDinhKem: attachment?.tepDinhKem || [],
                 hinhAnhSua: attachment?.hinhAnhSua || []
+                ,
+                // include rating fields so frontend can show rated state in lists
+                qualityRating: phieu.qualityRating,
+                qualityComments: phieu.qualityComments
             };
         }));
 
