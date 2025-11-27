@@ -49,6 +49,28 @@ export const authAPI = {
 
 // ============ CUSTOMER API ============
 export const customerAPI = {
+  // Lấy danh sách phiếu bảo hành của tôi
+  getMyTickets: async () => {
+    const user = storage.getUser()
+    if (!user || !user.id) return { data: [] }
+    const response = await fetch(`${API_BASE_URL}/customer/warranty-info/${user.id}`, {
+      headers: getAuthHeaders(),
+    })
+    const data = await handleResponse(response)
+    return { data: data.tickets || [] }
+  },
+
+  // Lấy danh sách sản phẩm của tôi
+  getMyProducts: async () => {
+    const user = storage.getUser()
+    if (!user || !user.id) return { data: [] }
+    const response = await fetch(`${API_BASE_URL}/customer/warranty-info/${user.id}`, {
+      headers: getAuthHeaders(),
+    })
+    const data = await handleResponse(response)
+    return { data: data.products || [] }
+  },
+
   // Gửi yêu cầu bảo hành (supports FormData + JSON fallback)
   submitWarrantyRequest: async (requestData) => {
     const url = `${API_BASE_URL}/customer/request`
@@ -110,6 +132,16 @@ export const customerAPI = {
     const response = await fetch(`${API_BASE_URL}/customer/payment/${ticketId}`, {
       method: 'POST',
       headers: getAuthHeaders(),
+    })
+    return handleResponse(response)
+  },
+
+  // Gửi đánh giá
+  submitRating: async (ticketId, ratingData) => {
+    const response = await fetch(`${API_BASE_URL}/customer/rate/${ticketId}`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(ratingData)
     })
     return handleResponse(response)
   },

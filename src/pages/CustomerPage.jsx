@@ -1,352 +1,144 @@
 ﻿import { useState, useEffect } from 'react'
-import { customerAPI, storage, generalAPI } from '../services/api'
-import '../styles/CustomerPage.css'
+import { motion, AnimatePresence } from 'framer-motion'
+import {
+  LayoutDashboard,
+  PlusCircle,
+  ClipboardList,
+  Tag,
+  Search,
+  Settings,
+  Star,
+  LogOut,
+  X,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+  Wrench,
+  ChevronRight,
+  History,
+  MapPin,
+  FileText,
+  Image as ImageIcon,
+  Trash2,
+  Filter
+} from 'lucide-react'
+import { customerAPI, generalAPI } from '../services/api'
 import SettingsPage from './SettingsPage'
 
-export default function CustomerPage({ onLogout }) {
-  const user = storage.getUser()
-
-  const MAX_ATTACHMENT_SIZE = 8 * 1024 * 1024
-  const MAX_ATTACHMENT_SIZE_MB = Math.round(MAX_ATTACHMENT_SIZE / (1024 * 1024))
-  const MAX_ATTACHMENT_COUNT = 5
-
-  const createInitialWarrantyForm = () => ({
-    sanPhamId: '',
-    hoTen: user?.hoTen || '',
-    soDienThoai: user?.soDienThoai || '',
-    email: user?.email || '',
-    maDonHang: '',
-    soSerial: '',
-    moTaLoi: '',
-    attachments: []
-  })
-
+export default function CustomerPage({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState('overview')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
-  // State data
+  // Data states
   const [myTickets, setMyTickets] = useState([])
   const [myProducts, setMyProducts] = useState([])
+
+  // Forms & Search states
+  const [ticketSearch, setTicketSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [pwSearch, setPwSearch] = useState('')
+
+
+
+  // Create Ticket Form
+  const createInitialWarrantyForm = () => ({
+    maDonHang: '',
+    soSerial: '',
+    sanPhamId: '',
+    moTaLoi: '',
+    attachments: []
+  })
+  const [warrantyForm, setWarrantyForm] = useState(createInitialWarrantyForm())
+
+  // Tracking
+  const [ticketCode, setTicketCode] = useState('')
   const [trackingResult, setTrackingResult] = useState(null)
-  const [selectedTicket, setSelectedTicket] = useState(null)
+
+  // Product Warranty Detail
   const [productWarrantyInfo, setProductWarrantyInfo] = useState(null)
 
-  // Form states
-  const [ticketCode, setTicketCode] = useState('')
-  const [productSerial, setProductSerial] = useState('')
-  const [warrantyForm, setWarrantyForm] = useState(createInitialWarrantyForm)
+  // Rating
+  const [ratingForm, setRatingForm] = useState({ ticketId: '', rating: 0, comment: '' })
 
-  const [ratingForm, setRatingForm] = useState({
-    ticketId: '',
-    rating: 0,
-    comment: ''
-  })
-
-  const updateWarrantyField = (field, value) => {
-    setWarrantyForm(prev => ({ ...prev, [field]: value }))
-  }
+  // Constants
+  const MAX_ATTACHMENT_SIZE_MB = 5
+  const MAX_ATTACHMENT_COUNT = 3
 
   useEffect(() => {
-    loadData()
-  }, [activeTab])
+    fetchData()
+  }, [])
 
-  // Auto-hide success and error messages after 4 seconds
-  useEffect(() => {
-    if (!success) return
-    const t = setTimeout(() => setSuccess(''), 4000)
-    return () => clearTimeout(t)
-  }, [success])
-
-  useEffect(() => {
-    if (!error) return
-    const t = setTimeout(() => setError(''), 4000)
-    return () => clearTimeout(t)
-  }, [error])
-
-  const loadData = async () => {
-    if (activeTab === 'overview' || activeTab === 'myTickets') {
-      await loadMyTickets()
-    }
-    if (activeTab === 'createRequest' || activeTab === 'productWarranty') {
-      await loadMyProducts()
-    }
-  }
-
-  const loadMyTickets = async () => {
+  const fetchData = async () => {
+    setLoading(true)
     try {
-      setLoading(true)
-      const data = await customerAPI.getWarrantyInfo(user.id)
-      setMyTickets(data.tickets || [])
-    } catch (e) {
-      console.error('Error loading tickets:', e)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const loadMyProducts = async () => {
-    try {
-      setLoading(true)
-      setError('')
-
-      const data = await generalAPI.getProducts()
-      console.log('📦 All products from API:', data)
-      console.log('👤 Current user ID:', user.id)
-
-      // Filter products belonging to this customer
-      // API populates khachHangId, so it might be an object with _id or just the ID string
-      const customerProducts = data.filter(p => {
-        if (!p.khachHangId) {
-          console.log('⚠️ Product has no khachHangId:', p)
-          return false
-        }
-
-        // Check if khachHangId is populated (object) or just ID (string)
-        const productCustomerId = p.khachHangId._id || p.khachHangId
-        const match = String(productCustomerId) === String(user.id)
-
-        if (match) {
-          console.log('✅ Match found:', p.tenSP, productCustomerId)
-        }
-
-        return match
-      })
-
-      console.log('🎯 Filtered customer products:', customerProducts)
-      setMyProducts(customerProducts)
+      const [ticketsRes, productsRes] = await Promise.all([
+        customerAPI.getMyTickets(),
+        customerAPI.getMyProducts()
+      ])
+      setMyTickets(ticketsRes.data)
+      setMyProducts(productsRes.data)
     } catch (err) {
-      console.error('❌ Error loading products:', err)
-      setError('Không thể tải danh sách sản phẩm: ' + err.message)
+      console.error(err)
+      setError('Không thể tải dữ liệu. Vui lòng thử lại.')
     } finally {
       setLoading(false)
     }
   }
 
-  const convertFileToBase64 = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result)
-      reader.onerror = (error) => reject(error)
-      reader.readAsDataURL(file)
-    })
+  // Helper Functions
+  const getStatusBadge = (status) => {
+    const config = {
+      dang_cho: { color: 'bg-yellow-100 text-yellow-700', icon: <Clock className="w-4 h-4" />, text: 'Đang chờ' },
+      tiep_nhan: { color: 'bg-blue-100 text-blue-700', icon: <ClipboardList className="w-4 h-4" />, text: 'Đã tiếp nhận' },
+      dang_kiem_tra: { color: 'bg-indigo-100 text-indigo-700', icon: <Search className="w-4 h-4" />, text: 'Đang kiểm tra' },
+      dang_sua: { color: 'bg-purple-100 text-purple-700', icon: <Wrench className="w-4 h-4" />, text: 'Đang sửa' },
+      hoan_tat: { color: 'bg-green-100 text-green-700', icon: <CheckCircle2 className="w-4 h-4" />, text: 'Hoàn tất' },
+      tu_choi: { color: 'bg-red-100 text-red-700', icon: <AlertCircle className="w-4 h-4" />, text: 'Từ chối' }
+    }
+    return config[status] || { color: 'bg-gray-100 text-gray-700', icon: <AlertCircle className="w-4 h-4" />, text: 'Không xác định' }
   }
 
-  const handleAttachmentChange = async (event) => {
-    const input = event.target
-    const selectedFiles = Array.from(input.files || [])
-    if (selectedFiles.length === 0) return
-
-    const messages = []
-    const availableSlots = Math.max(0, MAX_ATTACHMENT_COUNT - warrantyForm.attachments.length)
-    const filesToProcess = availableSlots > 0 ? selectedFiles.slice(0, availableSlots) : []
-
-    if (selectedFiles.length > filesToProcess.length) {
-      messages.push(`Chỉ được đính kèm tối đa ${MAX_ATTACHMENT_COUNT} tệp minh họa.`)
+  const getProgressPercentage = (status) => {
+    const map = {
+      dang_cho: 10,
+      tiep_nhan: 30,
+      dang_kiem_tra: 50,
+      dang_sua: 70,
+      hoan_tat: 100,
+      tu_choi: 100
     }
-
-    const processedFiles = []
-
-    for (const file of filesToProcess) {
-      if (file.size > MAX_ATTACHMENT_SIZE) {
-        messages.push(`Tệp "${file.name}" vượt quá dung lượng ${MAX_ATTACHMENT_SIZE_MB}MB.`)
-        continue
-      }
-
-      // Store the File object directly so we can send FormData to backend
-      processedFiles.push({
-        name: file.name,
-        type: file.type,
-        size: file.size,
-        file: file,
-        preview: URL.createObjectURL(file)
-      })
-    }
-
-    if (processedFiles.length > 0) {
-      setWarrantyForm(prev => ({
-        ...prev,
-        attachments: [...prev.attachments, ...processedFiles]
-      }))
-    }
-
-    if (messages.length > 0) {
-      setError(messages.join(' '))
-      setSuccess('')
-    }
-
-    input.value = ''
+    return map[status] || 0
   }
 
-  const handleRemoveAttachment = (index) => {
-    setWarrantyForm(prev => {
-      const removed = prev.attachments[index]
-      if (removed && removed.preview) {
-        try { URL.revokeObjectURL(removed.preview) } catch (e) { }
-      }
-      return {
-        ...prev,
-        attachments: prev.attachments.filter((_, idx) => idx !== index)
-      }
-    })
-  }
-
-  const formatAttachmentSize = (size) => {
-    if (size === undefined || size === null) return ''
-    if (size < 1024) return `${size} B`
-    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
-    return `${(size / (1024 * 1024)).toFixed(1)} MB`
-  }
-
-  const handleSubmitWarrantyRequest = async (e) => {
+  // Handlers
+  const handleCreateTicket = async (e) => {
     e.preventDefault()
+    setLoading(true)
     setError('')
     setSuccess('')
 
-    if (!warrantyForm.hoTen.trim() || !warrantyForm.soDienThoai.trim()) {
-      setError('Vui lòng nhập họ tên và số điện thoại liên hệ.')
-      return
-    }
-
-    if (!warrantyForm.maDonHang.trim() && !warrantyForm.soSerial.trim()) {
-      setError('Vui lòng nhập mã đơn hàng hoặc số serial sản phẩm.')
-      return
-    }
-
     try {
-      setLoading(true)
+      const formData = new FormData()
+      if (warrantyForm.maDonHang) formData.append('maDonHang', warrantyForm.maDonHang)
+      if (warrantyForm.soSerial) formData.append('soSerial', warrantyForm.soSerial)
+      if (warrantyForm.sanPhamId) formData.append('sanPhamId', warrantyForm.sanPhamId)
+      formData.append('moTaLoi', warrantyForm.moTaLoi)
 
-      const contactInfo = {
-        hoTen: warrantyForm.hoTen.trim(),
-        soDienThoai: warrantyForm.soDienThoai.trim(),
-        email: warrantyForm.email.trim(),
-        maDonHang: warrantyForm.maDonHang.trim(),
-        soSerial: warrantyForm.soSerial.trim()
-      }
+      warrantyForm.attachments.forEach(file => {
+        formData.append('attachments', file)
+      })
 
-      let result
-
-      // If there are actual File objects, build FormData and send multipart
-      const hasFiles = warrantyForm.attachments.some(a => a.file)
-      if (hasFiles) {
-        const formData = new FormData()
-        formData.append('sanPhamId', warrantyForm.sanPhamId)
-        formData.append('moTaLoi', warrantyForm.moTaLoi.trim())
-        formData.append('khachHangId', user.id)
-        formData.append('thongTinLienHe', JSON.stringify(contactInfo))
-
-        // Append any files under the field name 'attachments'
-        warrantyForm.attachments.forEach(a => {
-          if (a.file) {
-            formData.append('attachments', a.file, a.name)
-          }
-        })
-
-        // For compatibility, also include any non-file attachments (base64) as JSON
-        const nonFileAttachments = warrantyForm.attachments
-          .filter(a => !a.file && a.data)
-          .map(a => ({ tenTep: a.name, kieuNoiDung: a.type, duLieu: a.data, kichThuoc: a.size }))
-        if (nonFileAttachments.length > 0) {
-          formData.append('tepDinhKem', JSON.stringify(nonFileAttachments))
-        }
-
-        result = await customerAPI.submitWarrantyRequest(formData)
-      } else {
-        const attachmentsPayload = warrantyForm.attachments.map(file => ({
-          tenTep: file.name,
-          kieuNoiDung: file.type,
-          duLieu: file.data,
-          kichThuoc: file.size
-        }))
-
-        result = await customerAPI.submitWarrantyRequest({
-          sanPhamId: warrantyForm.sanPhamId,
-          moTaLoi: warrantyForm.moTaLoi.trim(),
-          khachHangId: user.id,
-          thongTinLienHe: contactInfo,
-          tepDinhKem: attachmentsPayload
-        })
-      }
-
-      const ticketCode = result?.data?.maPhieu || result?.maPhieu || ''
-      const confirmationMessage = result?.confirmation || 'Hệ thống sẽ gửi thông báo xác nhận qua email hoặc số điện thoại bạn cung cấp.'
-      setSuccess(`✅ Gửi yêu cầu thành công! Mã phiếu: ${ticketCode || 'Đang cập nhật'}. ${confirmationMessage}`)
+      await customerAPI.createTicket(formData)
+      setSuccess('Gửi yêu cầu bảo hành thành công!')
       setWarrantyForm(createInitialWarrantyForm())
-      loadMyTickets()
-      setTimeout(() => setActiveTab('myTickets'), 2000)
+      fetchData()
+      setActiveTab('myTickets')
     } catch (err) {
-      setError(err.message || 'Gửi yêu cầu thất bại')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handlePayment = async (ticketId) => {
-    if (!window.confirm('Bạn có chắc chắn muốn thanh toán chi phí này không?')) return
-
-    try {
-      setLoading(true)
-      setError('')
-
-      const response = await customerAPI.processPayment(ticketId)
-      setSuccess('Thanh toán thành công!')
-
-      // Refresh ticket data
-      const data = await customerAPI.trackTicket(ticketCode.trim())
-      setTrackingResult(data)
-    } catch (err) {
-      setError(err.message || 'Thanh toán thất bại')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleViewPayment = async (code) => {
-    setTicketCode(code)
-    setActiveTab('track')
-
-    try {
-      setLoading(true)
-      setError('')
-      setTrackingResult(null)
-
-      const data = await customerAPI.trackTicket(code)
-      setTrackingResult(data)
-
-      // Scroll to payment section after a short delay to ensure rendering
-      setTimeout(() => {
-        const paymentSection = document.querySelector('.payment-info')
-        if (paymentSection) {
-          paymentSection.scrollIntoView({ behavior: 'smooth', block: 'center' })
-          // Add highlight effect
-          paymentSection.style.animation = 'highlight 1s ease'
-        }
-      }, 500)
-    } catch (err) {
-      setError(err.message || 'Không tìm thấy phiếu bảo hành')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleTrackTicket = async (e) => {
-    e.preventDefault()
-    if (!ticketCode.trim()) {
-      setError('Vui lòng nhập mã phiếu bảo hành')
-      return
-    }
-
-    try {
-      setLoading(true)
-      setError('')
-      setTrackingResult(null)
-
-      const data = await customerAPI.trackTicket(ticketCode.trim())
-      setTrackingResult(data)
-      setSuccess('Tìm thấy phiếu bảo hành!')
-    } catch (err) {
-      setError(err.message || 'Không tìm thấy phiếu bảo hành')
+      setError(err.response?.data?.message || 'Lỗi khi gửi yêu cầu')
     } finally {
       setLoading(false)
     }
@@ -354,1395 +146,925 @@ export default function CustomerPage({ onLogout }) {
 
   const handleSubmitRating = async (e) => {
     e.preventDefault()
-    if (ratingForm.rating === 0) {
-      setError('Vui lòng chọn số sao đánh giá')
-      return
-    }
-
+    setLoading(true)
+    setError('')
+    setSuccess('')
     try {
-      setLoading(true)
-      setError('')
-
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/customer/rate/${ratingForm.ticketId}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${storage.getToken()}`
-        },
-        body: JSON.stringify({
-          rating: ratingForm.rating,
-          comment: ratingForm.comment
-        })
+      await customerAPI.submitRating(ratingForm.ticketId, {
+        rating: ratingForm.rating,
+        comment: ratingForm.comment
       })
-
-      let data
-      try {
-        data = await response.json()
-      } catch (parseErr) {
-        // response was not JSON (often an HTML error page) - capture text for debugging
-        const text = await response.text().catch(() => '')
-        console.error('Non-JSON response from rating endpoint:', text)
-        setError(`Lỗi server: không nhận được JSON (status ${response.status}). Xem console để biết thêm chi tiết.`)
-        return
-      }
-
-      if (!response.ok) {
-        // Hiện lỗi từ backend
-        setError(data.message || 'Gửi đánh giá thất bại')
-        return
-      }
-
-      setSuccess('Cảm ơn bạn đã gửi đánh giá!')
+      setSuccess('Cảm ơn bạn đã đánh giá dịch vụ!')
       setRatingForm({ ticketId: '', rating: 0, comment: '' })
-      // Reload tickets để cập nhật trạng thái đã đánh giá
-      await loadMyTickets()
-      // Chuyển về tab danh sách phiếu
-      setActiveTab('myTickets')
+      fetchData() // Reload tickets to update status
     } catch (err) {
-      console.error('Rating error:', err)
-      setError('Gửi đánh giá thất bại: ' + err.message)
+      setError(err.message || 'Gửi đánh giá thất bại')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleCheckProductWarranty = async (e) => {
+  const handleTrackTicket = async (e) => {
     e.preventDefault()
-    if (!productSerial.trim()) {
-      setError('Vui lòng nhập số serial sản phẩm')
-      return
+    if (!ticketCode.trim()) return
+    setLoading(true)
+    setError('')
+    try {
+      const res = await customerAPI.trackTicket(ticketCode)
+      setTrackingResult(res)
+    } catch (err) {
+      setError('Không tìm thấy phiếu bảo hành hoặc có lỗi xảy ra')
+      setTrackingResult(null)
+    } finally {
+      setLoading(false)
     }
+  }
+
+  const handleBookingSubmit = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+    setError('')
+    setSuccess('')
+    try {
+      await customerAPI.createBooking(bookingForm)
+      setSuccess('Đặt lịch hẹn thành công! Chúng tôi sẽ liên hệ lại sớm.')
+      setBookingForm({ ...bookingForm, date: '', time: '', note: '' })
+    } catch (err) {
+      setError(err.message || 'Đặt lịch thất bại')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Payment Handler
+  const handlePayment = async (ticketId) => {
+    if (!window.confirm('Bạn có chắc chắn muốn thanh toán chi phí này không?')) return
 
     try {
       setLoading(true)
       setError('')
-      setProductWarrantyInfo(null)
 
-      // Tìm sản phẩm theo serial
-      const product = myProducts.find(p => p.soSerial.toLowerCase() === productSerial.trim().toLowerCase())
+      await customerAPI.processPayment(ticketId)
+      setSuccess('Thanh toán thành công!')
 
-      if (!product) {
-        setError('Không tìm thấy sản phẩm với số serial này')
-        return
+      // Refresh ticket data
+      if (ticketCode) {
+        const data = await customerAPI.trackTicket(ticketCode)
+        setTrackingResult(data)
       }
-
-      // Tính toán thông tin bảo hành
-      const purchaseDate = new Date(product.ngayMua)
-      const warrantyEndDate = new Date(purchaseDate.getTime() + product.thoiHanBaoHanhThang * 30 * 24 * 60 * 60 * 1000)
-      const today = new Date()
-      const daysLeft = Math.ceil((warrantyEndDate - today) / (1000 * 60 * 60 * 24))
-      const totalDays = product.thoiHanBaoHanhThang * 30
-      const daysUsed = totalDays - daysLeft
-      const percentUsed = Math.max(0, Math.min(100, (daysUsed / totalDays) * 100))
-
-      // Lấy lịch sử bảo hành
-      const productTickets = myTickets.filter(t => t.sanPhamId?._id === product._id)
-
-      setProductWarrantyInfo({
-        product,
-        purchaseDate,
-        warrantyEndDate,
-        daysLeft,
-        totalDays,
-        percentUsed,
-        status: daysLeft > 30 ? 'valid' : daysLeft > 0 ? 'expiring' : 'expired',
-        tickets: productTickets
-      })
-
-      setSuccess('Tìm thấy thông tin sản phẩm!')
+      fetchData() // Refresh my tickets list
     } catch (err) {
-      setError('Có lỗi xảy ra khi tra cứu')
+      setError(err.message || 'Thanh toán thất bại')
     } finally {
       setLoading(false)
     }
   }
 
-  const getStatusBadge = (status) => {
-    const badges = {
-      dang_cho: { text: 'Đang chờ', class: 'badge-secondary', icon: '⏳' },
-      tiep_nhan: { text: 'Tiếp nhận', class: 'badge-info', icon: '📥' },
-      dang_kiem_tra: { text: 'Đang kiểm tra', class: 'badge-warning', icon: '🔍' },
-      dang_sua: { text: 'Đang sửa', class: 'badge-primary', icon: '🔧' },
-      hoan_tat: { text: 'Hoàn tất', class: 'badge-success', icon: '✅' },
-      tu_choi: { text: 'Từ chối', class: 'badge-danger', icon: '❌' }
-    }
-    return badges[status] || { text: status, class: 'badge-secondary', icon: '❓' }
-  }
-
-  const getProgressPercentage = (status) => {
-    const progress = {
-      dang_cho: 10,
-      tiep_nhan: 25,
-      dang_kiem_tra: 50,
-      dang_sua: 75,
-      hoan_tat: 100,
-      tu_choi: 0
-    }
-    return progress[status] || 0
-  }
-
-  const completedTickets = myTickets.filter(t => t.trangThai === 'hoan_tat')
-  const pendingTickets = myTickets.filter(t => t.trangThai !== 'hoan_tat' && t.trangThai !== 'tu_choi')
-  // Date & status filters for staff page (single date or range + status)
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [statusFilter, setStatusFilter] = useState('') // '' = tất cả
-  const [ticketSearch, setTicketSearch] = useState('') // Search for tickets
-
-  const clearDateFilters = () => {
-    setDateFrom('')
-    setDateTo('')
-    setStatusFilter('')
-    setTicketSearch('')
-  }
-
-  // Apply date & status filtering to the tickets shown in staff view
-  const displayedTickets = myTickets.filter(t => {
-    // Search filter
-    if (ticketSearch) {
-      const q = ticketSearch.trim().toLowerCase()
-      const productName = (t.sanPhamId?.tenSP || '').toLowerCase()
-      const ticketCode = (t.maPhieu || '').toLowerCase()
-      const description = (t.moTaLoi || '').toLowerCase()
-      const productType = (t.sanPhamId?.loaiSanPham || '').toLowerCase()
-      if (!productName.includes(q) && !ticketCode.includes(q) && !description.includes(q) && !productType.includes(q)) {
-        return false
-      }
-    }
-
-    // Status filter
-    if (statusFilter && t.trangThai !== statusFilter) return false
-
-    // Date filter
-    if (!t.ngayTiepNhan) return true
-    const ticketDate = new Date(t.ngayTiepNhan)
-    if (dateFrom) {
-      const from = new Date(dateFrom)
-      // include day start
-      from.setHours(0, 0, 0, 0)
-      if (ticketDate < from) return false
-    }
-    if (dateTo) {
-      const to = new Date(dateTo)
-      // include end of day
-      to.setHours(23, 59, 59, 999)
-      if (ticketDate > to) return false
-    }
-    return true
+  // Filter Logic
+  const filteredTickets = myTickets.filter(t => {
+    const matchSearch =
+      t.maPhieu.toLowerCase().includes(ticketSearch.toLowerCase()) ||
+      t.sanPhamId?.tenSP.toLowerCase().includes(ticketSearch.toLowerCase())
+    const matchStatus = statusFilter ? t.trangThai === statusFilter : true
+    const matchDate = (!dateFrom || new Date(t.ngayTiepNhan) >= new Date(dateFrom)) &&
+      (!dateTo || new Date(t.ngayTiepNhan) <= new Date(dateTo))
+    return matchSearch && matchStatus && matchDate
   })
 
-  // Product search for Product Warranty tab
-  const [pwSearch, setPwSearch] = useState('')
+  const filteredProducts = myProducts.filter(p =>
+    p.tenSP.toLowerCase().includes(pwSearch.toLowerCase()) ||
+    p.soSerial.toLowerCase().includes(pwSearch.toLowerCase())
+  )
 
-  const displayedProducts = myProducts.filter(p => {
-    if (!p) return false
-    if (!pwSearch) return true
-    const q = pwSearch.trim().toLowerCase()
-    const name = (p.tenSP || '').toLowerCase()
-    const serial = (p.soSerial || '').toLowerCase()
-    const brand = (p.thuongHieu || '').toLowerCase()
-    return name.includes(q) || serial.includes(q) || brand.includes(q)
-  })
-
-  const getProductWarrantyStatus = (product) => {
-    try {
-      const purchaseDate = new Date(product.ngayMua)
-      const warrantyEndDate = new Date(purchaseDate.getTime() + (product.thoiHanBaoHanhThang || 0) * 30 * 24 * 60 * 60 * 1000)
-      const daysLeft = Math.ceil((warrantyEndDate - new Date()) / (1000 * 60 * 60 * 24))
-      return daysLeft > 30 ? 'valid' : daysLeft > 0 ? 'expiring' : 'expired'
-    } catch (e) {
-      return 'valid'
-    }
-  }
+  const navItems = [
+    { id: 'overview', label: 'Tổng quan', icon: <LayoutDashboard className="w-5 h-5" /> },
+    { id: 'createRequest', label: 'Gửi yêu cầu', icon: <PlusCircle className="w-5 h-5" /> },
+    { id: 'myTickets', label: 'Phiếu của tôi', icon: <ClipboardList className="w-5 h-5" /> },
+    { id: 'productWarranty', label: 'Tra cứu SP', icon: <Tag className="w-5 h-5" /> },
+    { id: 'track', label: 'Tra cứu phiếu', icon: <Search className="w-5 h-5" /> },
+    { id: 'rate', label: 'Đánh giá', icon: <Star className="w-5 h-5" /> },
+    { id: 'settings', label: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
+  ]
 
   return (
-    <div className="customer-page">
+    <div className="customer-page min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
-      <header className="customer-header">
-        <div className="header-content">
-          <div className="header-info">
-            <h1>👋 Chào mừng, {user?.hoTen || 'Khách hàng'}</h1>
-            <p>Quản lý yêu cầu bảo hành của bạn</p>
+      <header className="customer-header bg-white shadow-sm sticky top-0 z-30">
+        <div className="header-content max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="logo flex items-center gap-2">
+            <span className="text-2xl">🛡️</span>
+            <span className="font-bold text-xl text-gray-800">WarrantyPro</span>
           </div>
-          <button onClick={onLogout} className="btn-logout">
-            <span>🚪</span> Đăng xuất
-          </button>
+
+          <div className="flex items-center gap-4">
+            <div className="user-info flex items-center gap-3 pl-4 border-l border-gray-200">
+              <div className="text-right hidden md:block">
+                <div className="font-semibold text-sm text-gray-800">{user?.hoTen}</div>
+                <div className="text-xs text-gray-500">Khách hàng</div>
+              </div>
+              <button
+                onClick={onLogout}
+                className="p-2 rounded-full hover:bg-red-50 text-gray-600 hover:text-red-600 transition-colors"
+                title="Đăng xuất"
+              >
+                <LogOut className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
         </div>
       </header>
 
-      {/* Navigation */}
-      <nav className="customer-nav">
-        <button
-          className={`nav-tab ${activeTab === 'overview' ? 'active' : ''}`}
-          onClick={() => setActiveTab('overview')}
-        >
-          <span className="tab-icon">📊</span>
-          <span>Tổng quan</span>
-        </button>
-        <button
-          className={`nav-tab ${activeTab === 'createRequest' ? 'active' : ''}`}
-          onClick={() => setActiveTab('createRequest')}
-        >
-          <span className="tab-icon">➕</span>
-          <span>Gửi yêu cầu</span>
-        </button>
-        <button
-          className={`nav-tab ${activeTab === 'myTickets' ? 'active' : ''}`}
-          onClick={() => setActiveTab('myTickets')}
-        >
-          <span className="tab-icon">📋</span>
-          <span>Phiếu của tôi</span>
-        </button>
-        <button
-          className={`nav-tab ${activeTab === 'productWarranty' ? 'active' : ''}`}
-          onClick={() => setActiveTab('productWarranty')}
-        >
-          <span className="tab-icon">🏷️</span>
-          <span>Tra cứu SP</span>
-        </button>
-        <button
-          className={`nav-tab ${activeTab === 'track' ? 'active' : ''}`}
-          onClick={() => setActiveTab('track')}
-        >
-          <span className="tab-icon">🔍</span>
-          <span>Tra cứu phiếu</span>
-        </button>
-        <button
-          className={`nav-tab ${activeTab === 'settings' ? 'active' : ''}`}
-          onClick={() => setActiveTab('settings')}
-        >
-          <span className="tab-icon">⚙️</span>
-          <span>Cài đặt</span>
-        </button>
-        <button
-          className={`nav-tab ${activeTab === 'rate' ? 'active' : ''}`}
-          onClick={() => setActiveTab('rate')}
-        >
-          <span className="tab-icon">⭐</span>
-          <span>Đánh giá</span>
-        </button>
-      </nav>
-
-      {/* Messages */}
-      {error && (
-        <div className="alert alert-error">
-          <span>❌</span> {error}
-          <button onClick={() => setError('')}>×</button>
-        </div>
-      )}
-      {success && (
-        <div className="alert alert-success">
-          <span>✅</span> {success}
-          <button onClick={() => setSuccess('')}>×</button>
-        </div>
-      )}
-
-      {/* Content */}
-      <main className="customer-content">
-        {/* Overview Tab */}
-        {activeTab === 'overview' && (
-          <div className="overview-section">
-            <h2 className="section-title">📊 Tổng quan</h2>
-
-            <div className="stats-grid">
-              <div className="stat-card blue">
-                <div className="stat-icon">📋</div>
-                <div className="stat-content">
-                  <div className="stat-label">Tổng phiếu</div>
-                  <div className="stat-value">{myTickets.length}</div>
-                </div>
-              </div>
-
-              <div className="stat-card orange">
-                <div className="stat-icon">⏳</div>
-                <div className="stat-content">
-                  <div className="stat-label">Đang xử lý</div>
-                  <div className="stat-value">{pendingTickets.length}</div>
-                </div>
-              </div>
-
-              <div className="stat-card green">
-                <div className="stat-icon">✅</div>
-                <div className="stat-content">
-                  <div className="stat-label">Hoàn tất</div>
-                  <div className="stat-value">{completedTickets.length}</div>
-                </div>
-              </div>
-
-              <div className="stat-card purple">
-                <div className="stat-icon">🏸</div>
-                <div className="stat-content">
-                  <div className="stat-label">Sản phẩm</div>
-                  <div className="stat-value">{myProducts.length}</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="recent-tickets">
-              <h3>📌 Phiếu gần đây</h3>
-              {myTickets.length === 0 ? (
-                <div className="empty-state">
-                  <p>🎉 Bạn chưa có phiếu bảo hành nào</p>
-                  <button className="btn-primary" onClick={() => setActiveTab('createRequest')}>
-                    Tạo yêu cầu mới
-                  </button>
-                </div>
-              ) : (
-                <div className="ticket-grid">
-                  {myTickets.slice(0, 4).map(ticket => (
-                    <div key={ticket._id} className="ticket-card-mini">
-                      <div className="ticket-header-mini">
-                        <span className="ticket-code">{ticket.maPhieu}</span>
-                        <span className={`badge ${getStatusBadge(ticket.trangThai).class}`}>
-                          {getStatusBadge(ticket.trangThai).icon} {getStatusBadge(ticket.trangThai).text}
-                        </span>
-                      </div>
-                      <h4>{ticket.sanPhamId?.tenSP || 'Sản phẩm'}</h4>
-                      <p className="ticket-date">
-                        📅 {new Date(ticket.ngayTiepNhan).toLocaleDateString('vi-VN')}
-                      </p>
-                      <div className="progress-bar-mini">
-                        <div
-                          className="progress-fill-mini"
-                          style={{ width: `${getProgressPercentage(ticket.trangThai)}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Create Request Tab */}
-        {activeTab === 'createRequest' && (
-          <div className="create-section">
-            <h2 className="section-title">➕ Gửi yêu cầu bảo hành</h2>
-
-            <div className="form-container">
-              <div className="info-box">
-                <h4>📝 Hướng dẫn gửi yêu cầu</h4>
-                <ol>
-                  <li><strong>Bước 1:</strong> Điền thông tin liên hệ và chọn sản phẩm cần bảo hành.</li>
-                  <li><strong>Bước 2:</strong> Mô tả chi tiết lỗi, đính kèm hình ảnh/video minh họa (nếu có).</li>
-                  <li><strong>Bước 3:</strong> Nhấn "Gửi yêu cầu bảo hành" để hệ thống ghi nhận và tạo mã phiếu.</li>
-                </ol>
-                <p className="info-note">Sau khi gửi, bạn sẽ nhận được thông báo xác nhận qua email hoặc số điện thoại đã cung cấp.</p>
-              </div>
-
-              <form onSubmit={handleSubmitWarrantyRequest} className="warranty-form">
-                <div className="form-section">
-                  <h3 className="form-section-title">Điền thông tin yêu cầu</h3>
-                  <div className="form-grid">
-                    <div className="form-group">
-                      <label>Họ tên khách hàng *</label>
-                      <input
-                        type="text"
-                        value={warrantyForm.hoTen}
-                        onChange={(e) => updateWarrantyField('hoTen', e.target.value)}
-                        placeholder="Nhập họ tên đầy đủ"
-                        required
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label>Số điện thoại liên hệ *</label>
-                      <input
-                        type="tel"
-                        value={warrantyForm.soDienThoai}
-                        onChange={(e) => updateWarrantyField('soDienThoai', e.target.value)}
-                        placeholder="VD: 0901 234 567"
-                        required
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label>Email (nếu có)</label>
-                      <input
-                        type="email"
-                        value={warrantyForm.email}
-                        onChange={(e) => updateWarrantyField('email', e.target.value)}
-                        placeholder="VD: email@domain.com"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="form-section">
-                  <h3 className="form-section-title">Thông tin sản phẩm</h3>
-                  <div className="form-group">
-                    <label>Chọn sản phẩm *</label>
-                    <select
-                      value={warrantyForm.sanPhamId}
-                      onChange={(e) => {
-                        const value = e.target.value
-                        const selectedProduct = myProducts.find(product => product._id === value)
-                        setWarrantyForm(prev => ({
-                          ...prev,
-                          sanPhamId: value,
-                          soSerial: selectedProduct?.soSerial || ''
-                        }))
-                      }}
-                      required
-                    >
-                      <option value="">-- Chọn sản phẩm cần bảo hành --</option>
-                      {myProducts.map(product => (
-                        <option key={product._id} value={product._id}>
-                          {product.tenSP} - {product.loaiSanPham} ({product.soSerial})
-                        </option>
-                      ))}
-                    </select>
-                    {myProducts.length === 0 && (
-                      <p className="form-hint">⚠️ Bạn chưa có sản phẩm nào được đăng ký</p>
-                    )}
-                  </div>
-                  <div className="form-grid">
-                    <div className="form-group">
-                      <label>Mã đơn hàng</label>
-                      <input
-                        type="text"
-                        value={warrantyForm.maDonHang}
-                        onChange={(e) => updateWarrantyField('maDonHang', e.target.value)}
-                        placeholder="VD: DH123456 (nếu có)"
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label>Số serial sản phẩm *</label>
-                      <input
-                        type="text"
-                        value={warrantyForm.soSerial}
-                        onChange={(e) => updateWarrantyField('soSerial', e.target.value)}
-                        placeholder="VD: SN123456789"
-                        required={!warrantyForm.maDonHang}
-                      />
-                      <p className="form-hint">Nhập mã đơn hàng hoặc số serial in trên phiếu hoặc thân sản phẩm.</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="form-section">
-                  <h3 className="form-section-title">Mô tả & minh họa</h3>
-                  <div className="form-group">
-                    <label>Mô tả sự cố *</label>
-                    <textarea
-                      value={warrantyForm.moTaLoi}
-                      onChange={(e) => updateWarrantyField('moTaLoi', e.target.value)}
-                      rows="6"
-                      placeholder="Mô tả chi tiết vấn đề của sản phẩm: triệu chứng, khi nào xảy ra, tần suất..."
-                      required
-                    />
-                    <p className="form-hint">Mô tả càng cụ thể, kỹ thuật viên càng dễ hỗ trợ bạn nhanh chóng.</p>
-                  </div>
-                  <div className="form-group">
-                    <label>Gửi kèm hình ảnh/video (nếu có)</label>
-                    <div className="attachment-upload">
-                      <input
-                        id="warranty-attachments"
-                        type="file"
-                        accept="image/*,video/*"
-                        multiple
-                        onChange={handleAttachmentChange}
-                      />
-                      <label htmlFor="warranty-attachments" className="upload-label">
-                        <span className="upload-icon">📎</span>
-                        <div className="upload-text">
-                          <strong>Thêm tệp minh họa</strong>
-                          <span>Hình ảnh hoặc video giúp kỹ thuật viên đánh giá nhanh hơn</span>
-                        </div>
-                      </label>
-                    </div>
-                    {warrantyForm.attachments.length > 0 && (
-                      <ul className="attachment-list">
-                        {warrantyForm.attachments.map((file, index) => (
-                          <li key={`${file.name}-${index}`}>
-                            <div className="attachment-info">
-                              <span className="attachment-name">{file.name}</span>
-                              <span className="attachment-meta">{file.type || 'Tệp đính kèm'} · {formatAttachmentSize(file.size)}</span>
-                            </div>
-                            <button
-                              type="button"
-                              className="attachment-remove"
-                              onClick={() => handleRemoveAttachment(index)}
-                              aria-label={`Xóa ${file.name}`}
-                            >
-                              ×
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    <p className="form-hint">Tối đa {MAX_ATTACHMENT_COUNT} tệp, mỗi tệp ≤ {MAX_ATTACHMENT_SIZE_MB}MB.</p>
-                  </div>
-                </div>
-
-                <div className="form-actions">
-                  <button type="submit" className="btn-primary" disabled={loading || myProducts.length === 0}>
-                    {loading ? '⏳ Đang gửi...' : '📤 Gửi yêu cầu bảo hành'}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => setWarrantyForm(createInitialWarrantyForm())}
-                  >
-                    🔄 Làm mới
-                  </button>
-                </div>
-              </form>
-
-            </div>
-          </div>
-        )}
-
-        {/* My Tickets Tab */}
-        {activeTab === 'myTickets' && (
-          <div className="tickets-section">
-            <div className="section-header">
-              <h2 className="section-title">📋 Danh sách phiếu bảo hành</h2>
-              <button className="btn-primary" onClick={() => setActiveTab('createRequest')}>
-                <span>➕</span> Tạo mới
-              </button>
-            </div>
-
-            <div className="search-box-container">
-              <div className="search-box">
-                <span className="search-icon">🔍</span>
-                <input
-                  type="search"
-                  placeholder="Tìm kiếm theo tên sản phẩm, mã phiếu, mô tả lỗi..."
-                  value={ticketSearch}
-                  onChange={(e) => setTicketSearch(e.target.value)}
-                />
-                {ticketSearch && (
-                  <button className="clear-search" onClick={() => setTicketSearch('')}>✕</button>
-                )}
-              </div>
-            </div>
-
-            <div className="tickets-filters">
-              <div className="filter-item">
-                <label>📅 Từ ngày</label>
-                <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-              </div>
-              <div className="filter-item">
-                <label>📅 Đến ngày</label>
-                <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-              </div>
-              <div className="filter-item">
-                <label>🏷️ Trạng thái</label>
-                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                  <option value="">-- Tất cả --</option>
-                  <option value="dang_cho">⏳ Đang chờ</option>
-                  <option value="tiep_nhan">📥 Tiếp nhận</option>
-                  <option value="dang_kiem_tra">🔍 Đang kiểm tra</option>
-                  <option value="dang_sua">🔧 Đang sửa</option>
-                  <option value="hoan_tat">✅ Hoàn tất</option>
-                  <option value="tu_choi">❌ Từ chối</option>
-                </select>
-              </div>
-              <div className="filter-actions">
-                {(dateFrom || dateTo || statusFilter || ticketSearch) && (
-                  <button className="btn-clear-filters" onClick={(e) => { e.preventDefault(); clearDateFilters() }}>✕ Xóa bộ lọc</button>
-                )}
-              </div>
-            </div>
-
-            {loading && <div className="loading-spinner">⏳ Đang tải...</div>}
-
-            {!loading && myTickets.length === 0 && (
-              <div className="empty-state">
-                <p>📭 Bạn chưa có phiếu bảo hành nào</p>
-              </div>
-            )}
-
-            {!loading && myTickets.length > 0 && displayedTickets.length === 0 && (
-              <div className="empty-state">
-                <p>🔍 Không tìm thấy phiếu bảo hành nào phù hợp với bộ lọc</p>
-                <button className="btn-secondary" onClick={clearDateFilters}>Xóa bộ lọc</button>
-              </div>
-            )}
-
-            <div className="ticket-list compact">
-              {displayedTickets.map(ticket => (
-                <div key={ticket._id} className="ticket-card">
-                  <div className="ticket-card-header">
-                    <div>
-                      <h3>{ticket.sanPhamId?.tenSP || 'Sản phẩm'}</h3>
-                      <p className="ticket-code">Mã: {ticket.maPhieu}</p>
-                    </div>
-                    <span className={`badge ${getStatusBadge(ticket.trangThai).class}`}>
-                      {getStatusBadge(ticket.trangThai).icon} {getStatusBadge(ticket.trangThai).text}
-                    </span>
-                  </div>
-
-                  <div className="ticket-card-body">
-                    <div className="ticket-info">
-                      <div className="info-item">
-                        <span className="info-label">🏷️ Loại:</span>
-                        <span className="info-value">{ticket.sanPhamId?.loaiSanPham || 'N/A'}</span>
-                      </div>
-                      <div className="info-item">
-                        <span className="info-label">📅 Tiếp nhận:</span>
-                        <span className="info-value">
-                          {new Date(ticket.ngayTiepNhan).toLocaleDateString('vi-VN')}
-                        </span>
-                      </div>
-                      {ticket.ngayHoanTat && (
-                        <div className="info-item">
-                          <span className="info-label">✅ Hoàn tất:</span>
-                          <span className="info-value">
-                            {new Date(ticket.ngayHoanTat).toLocaleDateString('vi-VN')}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="ticket-description">
-                      <strong>Mô tả:</strong>
-                      <p>{ticket.moTaLoi}</p>
-                    </div>
-
-                    <div className="progress-section">
-                      <div className="progress-bar">
-                        <div
-                          className="progress-fill"
-                          style={{ width: `${getProgressPercentage(ticket.trangThai)}%` }}
-                        ></div>
-                      </div>
-                      <span className="progress-text">{getProgressPercentage(ticket.trangThai)}% hoàn thành</span>
-                    </div>
-                  </div>
-
-                  <div className="ticket-card-footer">
-                    <button
-                      className="btn-detail"
-                      onClick={() => {
-                        setTicketCode(ticket.maPhieu)
-                        setActiveTab('track')
-                      }}
-                    >
-                      🔍 Xem chi tiết
-                    </button>
-                    {ticket.trangThai === 'hoan_tat' && !ticket.qualityRating && (
-                      <button
-                        className="btn-rate"
-                        onClick={() => {
-                          setRatingForm({ ticketId: ticket._id, rating: 0, comment: '' })
-                          setActiveTab('rate')
-                        }}
-                      >
-                        ⭐ Đánh giá
-                      </button>
-                    )}
-                    {ticket.trangThai === 'hoan_tat' && ticket.qualityRating && (
-                      <span className="rating-badge">
-                        ⭐ Đã đánh giá: {ticket.qualityRating}/5
-                      </span>
-                    )}
-
-                    {(() => {
-                      // Sử dụng tongTien từ database (đã được tính đúng)
-                      const totalCost = ticket.tongTien || 0;
-
-                      if (totalCost > 0 && ticket.trangThaiThanhToan !== 'da_thanh_toan') {
-                        return (
-                          <button
-                            className="btn-payment-small"
-                            onClick={() => handleViewPayment(ticket.maPhieu)}
-                            style={{
-                              marginLeft: '0.5rem',
-                              background: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)',
-                              color: 'white',
-                              border: 'none',
-                              padding: '0.4rem 0.8rem',
-                              borderRadius: '6px',
-                              fontWeight: '600',
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.3rem',
-                              fontSize: '0.9rem'
-                            }}
-                          >
-                            💳 Thanh toán
-                          </button>
-                        )
-                      }
-                      return null
-                    })()}
-                  </div>
-                </div>
+      {/* Main Content */}
+      <div className="flex-1 max-w-7xl mx-auto w-full px-4 py-8 flex flex-col md:flex-row gap-8">
+        {/* Sidebar Nav */}
+        <nav className="w-full md:w-64 flex-shrink-0">
+          <div className="bg-white rounded-2xl shadow-sm p-4 sticky top-24">
+            <div className="space-y-1">
+              {navItems.map(item => (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === item.id
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
+                    : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                >
+                  {item.icon}
+                  <span className="font-medium">{item.label}</span>
+                </button>
               ))}
             </div>
           </div>
-        )}
+        </nav>
 
-        {/* Product Warranty Tab */}
-        {activeTab === 'productWarranty' && (
-          <div className="product-warranty-section">
-            <h2 className="section-title">🏷️ Quản lý bảo hành sản phẩm</h2>
-
-            <div className="products-warranty-grid">
-              {/* Products List */}
-              <div className="products-list-panel">
-                <div className="panel-header">
-                  <h3>📦 Sản phẩm của bạn ({myProducts.length})</h3>
-                </div>
-
-                <div className="products-search">
-                  <div className="search-item">
-                    <label>Tìm kiếm sản phẩm / serial / thương hiệu</label>
-                    <input
-                      type="search"
-                      placeholder="Nhập tên sản phẩm, số serial hoặc thương hiệu..."
-                      value={pwSearch}
-                      onChange={(e) => setPwSearch(e.target.value)}
-                    />
+        {/* Content Area */}
+        <main className="flex-1 min-w-0">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.2 }}
+            >
+              {/* Alerts */}
+              {error && (
+                <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-xl flex items-center justify-between border border-red-100">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-5 h-5" />
+                    <span>{error}</span>
                   </div>
+                  <button onClick={() => setError('')}><X className="w-4 h-4" /></button>
                 </div>
-
-                {loading && <div className="loading-spinner">⏳ Đang tải...</div>}
-
-                {!loading && myProducts.length === 0 && (
-                  <div className="empty-state">
-                    <p>👤 Bạn chưa có sản phẩm nào được đăng ký</p>
-                    <p className="empty-hint">Liên hệ cửa hàng để đăng ký sản phẩm của bạn</p>
+              )}
+              {success && (
+                <div className="mb-6 p-4 bg-green-50 text-green-700 rounded-xl flex items-center justify-between border border-green-100">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5" />
+                    <span>{success}</span>
                   </div>
-                )}
+                  <button onClick={() => setSuccess('')}><X className="w-4 h-4" /></button>
+                </div>
+              )}
 
-                {!loading && myProducts.length > 0 && (
-                  <div className="products-list">
-                    {displayedProducts.map(product => {
-                      const purchaseDate = new Date(product.ngayMua)
-                      const warrantyEndDate = new Date(purchaseDate.getTime() + product.thoiHanBaoHanhThang * 30 * 24 * 60 * 60 * 1000)
-                      const daysLeft = Math.ceil((warrantyEndDate - new Date()) / (1000 * 60 * 60 * 24))
-                      const totalDays = product.thoiHanBaoHanhThang * 30
-                      const status = daysLeft > 30 ? 'valid' : daysLeft > 0 ? 'expiring' : 'expired'
-
-                      return (
-                        <div
-                          key={product._id}
-                          className={`product-item ${productWarrantyInfo?.product._id === product._id ? 'active' : ''}`}
-                          onClick={() => {
-                            // Calculate warranty info
-                            const totalDays = product.thoiHanBaoHanhThang * 30
-                            const daysUsed = totalDays - daysLeft
-                            const percentUsed = Math.max(0, Math.min(100, (daysUsed / totalDays) * 100))
-                            const productTickets = myTickets.filter(t => t.sanPhamId?._id === product._id)
-
-                            setProductWarrantyInfo({
-                              product,
-                              purchaseDate,
-                              warrantyEndDate,
-                              daysLeft,
-                              totalDays,
-                              percentUsed,
-                              status,
-                              tickets: productTickets
-                            })
-                            setSuccess('') // Clear success message
-                          }}
-                        >
-                          <div className="product-item-header">
-                            <div className="product-icon">
-                              {product.loaiSanPham === 'Vot' && '🏸'}
-                              {product.loaiSanPham === 'Giay' && '👟'}
-                              {product.loaiSanPham === 'Balo' && '🎒'}
-                              {product.loaiSanPham === 'PhuKien' && '🛍️'}
-                            </div>
-                            <div className="product-item-info">
-                              <h4>{product.tenSP}</h4>
-                              <p className="product-brand">{product.thuongHieu || 'N/A'} • {product.loaiSanPham}</p>
-                              <p className="product-serial">SN: {product.soSerial}</p>
-                            </div>
-                          </div>
-
-                          <div className="product-item-warranty">
-                            <span className={`warranty-status-badge ${status}`}>
-                              {status === 'valid' && '✅ Còn hạn'}
-                              {status === 'expiring' && '⚠️ Sắp hết'}
-                              {status === 'expired' && '❌ Hết hạn'}
-                            </span>
-                            <span className="warranty-days">
-                              {daysLeft > 0 ? `${daysLeft} ngày` : `Quá ${Math.abs(daysLeft)} ngày`}
-                            </span>
-                          </div>
-
-                          <div className="product-item-footer">
-                            <div className="mini-progress-bar">
-                              <div
-                                className="mini-progress-fill"
-                                style={{
-                                  width: `${Math.max(0, Math.min(100, ((totalDays - daysLeft) / totalDays) * 100))}%`,
-                                  background: status === 'valid' ? 'var(--success-color)' : status === 'expiring' ? 'var(--warning-color)' : 'var(--danger-color)'
-                                }}
-                              ></div>
-                            </div>
-                          </div>
+              {/* OVERVIEW TAB */}
+              {activeTab === 'overview' && (
+                <div className="space-y-6">
+                  <h2 className="text-2xl font-bold text-gray-800">Tổng quan</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+                          <ClipboardList className="w-6 h-6" />
                         </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Warranty Details */}
-              <div className="warranty-details-panel">
-                {!productWarrantyInfo ? (
-                  <div className="no-selection">
-                    <div className="no-selection-icon">🏷️</div>
-                    <h3>Chọn sản phẩm để xem chi tiết</h3>
-                    <p>Click vào sản phẩm bên trái để xem thông tin bảo hành đầy đủ</p>
-                  </div>
-                ) : (
-                  <div className="warranty-detail-card">
-                    <div className="warranty-detail-header">
-                      <div className="header-info">
-                        <h3>📋 Chi tiết bảo hành</h3>
-                        <span className={`warranty-status-large ${productWarrantyInfo.status}`}>
-                          {productWarrantyInfo.status === 'valid' && '✅ Còn hạn bảo hành'}
-                          {productWarrantyInfo.status === 'expiring' && '⚠️ Sắp hết hạn'}
-                          {productWarrantyInfo.status === 'expired' && '❌ Hết hạn bảo hành'}
+                        <span className="text-2xl font-bold text-gray-800">{myTickets.length}</span>
+                      </div>
+                      <div className="text-gray-500 font-medium">Tổng phiếu</div>
+                    </div>
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="p-3 bg-yellow-50 text-yellow-600 rounded-xl">
+                          <Clock className="w-6 h-6" />
+                        </div>
+                        <span className="text-2xl font-bold text-gray-800">
+                          {myTickets.filter(t => ['dang_cho', 'tiep_nhan', 'dang_kiem_tra', 'dang_sua'].includes(t.trangThai)).length}
                         </span>
                       </div>
+                      <div className="text-gray-500 font-medium">Đang xử lý</div>
                     </div>
-
-                    <div className="warranty-detail-body">
-                      {/* Product Info */}
-                      <div className="detail-section">
-                        <h4>🏸 Thông tin sản phẩm</h4>
-                        <div className="detail-grid">
-                          <div className="detail-row">
-                            <span className="detail-label">Tên sản phẩm:</span>
-                            <span className="detail-value">{productWarrantyInfo.product.tenSP}</span>
-                          </div>
-                          <div className="detail-row">
-                            <span className="detail-label">Loại:</span>
-                            <span className="detail-value">{productWarrantyInfo.product.loaiSanPham}</span>
-                          </div>
-                          <div className="detail-row">
-                            <span className="detail-label">Thương hiệu:</span>
-                            <span className="detail-value">{productWarrantyInfo.product.thuongHieu || 'N/A'}</span>
-                          </div>
-                          <div className="detail-row">
-                            <span className="detail-label">Số serial:</span>
-                            <span className="detail-value"><code>{productWarrantyInfo.product.soSerial}</code></span>
-                          </div>
-                          <div className="detail-row">
-                            <span className="detail-label">Thời hạn BH:</span>
-                            <span className="detail-value">{productWarrantyInfo.product.thoiHanBaoHanhThang} tháng</span>
-                          </div>
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="p-3 bg-green-50 text-green-600 rounded-xl">
+                          <CheckCircle2 className="w-6 h-6" />
                         </div>
+                        <span className="text-2xl font-bold text-gray-800">
+                          {myTickets.filter(t => t.trangThai === 'hoan_tat').length}
+                        </span>
                       </div>
-
-                      {/* Warranty Timeline */}
-                      <div className="detail-section">
-                        <h4>🕒 Thời gian bảo hành</h4>
-                        <div className="warranty-timeline">
-                          <div className="timeline-point">
-                            <div className="point-icon">🔵</div>
-                            <div className="point-info">
-                              <span className="point-label">Ngày mua</span>
-                              <span className="point-value">{productWarrantyInfo.purchaseDate.toLocaleDateString('vi-VN')}</span>
-                            </div>
-                          </div>
-
-                          <div className="timeline-line">
-                            <div
-                              className="timeline-progress"
-                              style={{ width: `${productWarrantyInfo.percentUsed}%` }}
-                            ></div>
-                          </div>
-
-                          <div className="timeline-point">
-                            <div className={`point-icon ${productWarrantyInfo.status === 'expired' ? 'expired' : 'valid'}`}>
-                              {productWarrantyInfo.status === 'expired' ? '🔴' : '🟢'}
-                            </div>
-                            <div className="point-info">
-                              <span className="point-label">Hết hạn</span>
-                              <span className="point-value">{productWarrantyInfo.warrantyEndDate.toLocaleDateString('vi-VN')}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="warranty-summary">
-                          <div className="summary-item">
-                            <span className="summary-label">Đã qua</span>
-                            <span className="summary-value">{Math.round(productWarrantyInfo.percentUsed)}%</span>
-                            <div className="summary-bar">
-                              <div style={{ width: `${productWarrantyInfo.percentUsed}%` }}></div>
-                            </div>
-                          </div>
-                          <div className="summary-item">
-                            <span className="summary-label">{productWarrantyInfo.daysLeft > 0 ? 'Còn lại' : 'Quá hạn'}</span>
-                            <span className="summary-value">{Math.abs(productWarrantyInfo.daysLeft)} ngày</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Warranty History */}
-                      {productWarrantyInfo.tickets.length > 0 && (
-                        <div className="detail-section">
-                          <h4>📜 Lịch sử bảo hành ({productWarrantyInfo.tickets.length} lần)</h4>
-                          <div className="warranty-history-list">
-                            {productWarrantyInfo.tickets.map(ticket => (
-                              <div key={ticket._id} className="history-card">
-                                <div className="history-card-header">
-                                  <span className="history-code">{ticket.maPhieu}</span>
-                                  <span className={`badge ${getStatusBadge(ticket.trangThai).class}`}>
-                                    {getStatusBadge(ticket.trangThai).icon} {getStatusBadge(ticket.trangThai).text}
-                                  </span>
-                                </div>
-                                <p className="history-description">{ticket.moTaLoi}</p>
-                                <div className="history-footer">
-                                  <span className="history-date">
-                                    📅 {new Date(ticket.ngayTiepNhan).toLocaleDateString('vi-VN')}
-                                  </span>
-                                  {ticket.ngayHoanTat && (
-                                    <span className="history-completed">
-                                      ✅ {new Date(ticket.ngayHoanTat).toLocaleDateString('vi-VN')}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Alert Messages */}
-                      {productWarrantyInfo.status === 'expiring' && (
-                        <div className="warranty-alert warning">
-                          <strong>⚠️ Cảnh báo:</strong> Bảo hành sắp hết hạn trong {productWarrantyInfo.daysLeft} ngày.
-                          Hãy kiểm tra sản phẩm và liên hệ nếu cần hỗ trợ.
-                        </div>
-                      )}
-
-                      {productWarrantyInfo.status === 'expired' && (
-                        <div className="warranty-alert danger">
-                          <strong>❌ Thông báo:</strong> Sản phẩm đã hết thời hạn bảo hành {Math.abs(productWarrantyInfo.daysLeft)} ngày.
-                          Vui lòng liên hệ để biết thêm thông tin về dịch vụ sửa chữa trả phí.
-                        </div>
-                      )}
-
-                      {productWarrantyInfo.status === 'valid' && (
-                        <div className="warranty-alert success">
-                          <strong>✅ Trạng thái:</strong> Sản phẩm vẫn còn {productWarrantyInfo.daysLeft} ngày bảo hành.
-                          Bạn có thể yên tâm sử dụng.
-                        </div>
-                      )}
+                      <div className="text-gray-500 font-medium">Hoàn tất</div>
                     </div>
-
-                    {/* Actions */}
-                    <div className="warranty-detail-footer">
-                      {productWarrantyInfo.status !== 'expired' && (
-                        <button
-                          className="btn-primary btn-large"
-                          onClick={() => {
-                            const freshForm = createInitialWarrantyForm()
-                            setWarrantyForm({
-                              ...freshForm,
-                              sanPhamId: productWarrantyInfo.product._id,
-                              soSerial: productWarrantyInfo.product.soSerial || freshForm.soSerial
-                            })
-                            setActiveTab('createRequest')
-                          }}
-                        >
-                          <span>➕</span> Tạo yêu cầu bảo hành
-                        </button>
-                      )}
-                      <button
-                        className="btn-secondary btn-large"
-                        onClick={() => {
-                          if (productWarrantyInfo.tickets.length > 0) {
-                            setTicketCode(productWarrantyInfo.tickets[0].maPhieu)
-                            setActiveTab('track')
-                          }
-                        }}
-                      >
-                        <span>🔍</span> Xem lịch sử chi tiết
-                      </button>
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="p-3 bg-purple-50 text-purple-600 rounded-xl">
+                          <Tag className="w-6 h-6" />
+                        </div>
+                        <span className="text-2xl font-bold text-gray-800">{myProducts.length}</span>
+                      </div>
+                      <div className="text-gray-500 font-medium">Sản phẩm</div>
                     </div>
                   </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
 
-        {/* Track Tab */}
-        {activeTab === 'track' && (
-          <div className="track-section">
-            <h2 className="section-title">🔍 Tra cứu phiếu bảo hành</h2>
-
-            <form onSubmit={handleTrackTicket} className="track-form">
-              <div className="form-group">
-                <label>Nhập mã phiếu bảo hành</label>
-                <div className="input-with-button">
-                  <input
-                    type="text"
-                    value={ticketCode}
-                    onChange={(e) => setTicketCode(e.target.value)}
-                    placeholder="VD: BH000001"
-                  />
-                  <button type="submit" className="btn-primary" disabled={loading}>
-                    {loading ? '⏳' : '🔍'} Tra cứu
-                  </button>
-                </div>
-              </div>
-            </form>
-
-            {trackingResult && (
-              <div className="tracking-result">
-                <div className="result-header">
-                  <h3>📄 Thông tin phiếu: {trackingResult.maPhieu}</h3>
-                  <span className={`badge-large ${getStatusBadge(trackingResult.trangThai).class}`}>
-                    {getStatusBadge(trackingResult.trangThai).icon} {getStatusBadge(trackingResult.trangThai).text}
-                  </span>
-                </div>
-
-                <div className="result-grid">
-                  {/* Left: summary */}
-                  <aside className="result-summary">
-                    <div className="summary-card">
-                      <div className="summary-top">
-                        <div className="product-title">
-                          <h4>{trackingResult.sanPhamId?.tenSP || 'Sản phẩm'}</h4>
-                          <p className="product-serial">SN: {trackingResult.sanPhamId?.soSerial || '—'}</p>
-                        </div>
-                        <div className={`status-block ${getStatusBadge(trackingResult.trangThai).class}`}>
-                          {getStatusBadge(trackingResult.trangThai).icon} {getStatusBadge(trackingResult.trangThai).text}
-                        </div>
+                  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                    <h3 className="text-lg font-bold text-gray-800 mb-4">Phiếu bảo hành gần đây</h3>
+                    {myTickets.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="text-left text-gray-500 text-sm border-b border-gray-100">
+                              <th className="pb-3 font-medium">Mã phiếu</th>
+                              <th className="pb-3 font-medium">Sản phẩm</th>
+                              <th className="pb-3 font-medium">Ngày gửi</th>
+                              <th className="pb-3 font-medium">Trạng thái</th>
+                            </tr>
+                          </thead>
+                          <tbody className="text-sm">
+                            {myTickets.slice(0, 5).map(ticket => (
+                              <tr key={ticket._id} className="border-b border-gray-50 last:border-0">
+                                <td className="py-3 font-medium text-blue-600">{ticket.maPhieu}</td>
+                                <td className="py-3 text-gray-800">{ticket.sanPhamId?.tenSP || 'N/A'}</td>
+                                <td className="py-3 text-gray-500">{new Date(ticket.ngayTiepNhan).toLocaleDateString('vi-VN')}</td>
+                                <td className="py-3">
+                                  <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadge(ticket.trangThai).color}`}>
+                                    {getStatusBadge(ticket.trangThai).icon}
+                                    {getStatusBadge(ticket.trangThai).text}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
+                    ) : (
+                      <p className="text-gray-500 text-center py-4">Chưa có phiếu bảo hành nào</p>
+                    )}
+                  </div>
+                </div>
+              )}
 
-                      <div className="summary-body">
-                        <div className="summary-row">
-                          <span>Loại</span>
-                          <strong>{trackingResult.sanPhamId?.loaiSanPham || 'N/A'}</strong>
-                        </div>
-                        <div className="summary-row">
-                          <span>Tiếp nhận</span>
-                          <strong>{new Date(trackingResult.ngayTiepNhan).toLocaleDateString('vi-VN')}</strong>
-                        </div>
-                        <div className="summary-row">
-                          <span>Hoàn tất</span>
-                          <strong>{trackingResult.ngayHoanTat ? new Date(trackingResult.ngayHoanTat).toLocaleDateString('vi-VN') : 'Đang xử lý'}</strong>
-                        </div>
+              {/* BOOKING TAB */}
+              {activeTab === 'booking' && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                  <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                    <Calendar className="w-6 h-6 text-blue-600" />
+                    Đặt lịch hẹn bảo hành
+                  </h2>
+                  <form onSubmit={handleBookingSubmit} className="max-w-2xl">
+                    <div className="grid md:grid-cols-2 gap-6 mb-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Chọn sản phẩm</label>
+                        <select
+                          className="w-full p-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                          value={bookingForm.productId}
+                          onChange={e => setBookingForm({ ...bookingForm, productId: e.target.value })}
+                          required
+                        >
+                          <option value="">-- Chọn sản phẩm cần bảo hành --</option>
+                          {myProducts.map(p => (
+                            <option key={p._id} value={p._id}>{p.tenSP} - {p.soSerial}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Chi nhánh</label>
+                        <select
+                          className="w-full p-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                          value={bookingForm.branch}
+                          onChange={e => setBookingForm({ ...bookingForm, branch: e.target.value })}
+                        >
+                          <option value="chinhanh1">Chi nhánh 1 - Quận 1, TP.HCM</option>
+                          <option value="chinhanh2">Chi nhánh 2 - Cầu Giấy, Hà Nội</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Ngày hẹn</label>
+                        <input
+                          type="date"
+                          className="w-full p-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                          value={bookingForm.date}
+                          onChange={e => setBookingForm({ ...bookingForm, date: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Giờ hẹn</label>
+                        <input
+                          type="time"
+                          className="w-full p-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                          value={bookingForm.time}
+                          onChange={e => setBookingForm({ ...bookingForm, time: e.target.value })}
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="mb-6">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Ghi chú thêm</label>
+                      <textarea
+                        className="w-full p-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                        rows="3"
+                        placeholder="Mô tả sơ qua về vấn đề hoặc yêu cầu đặc biệt..."
+                        value={bookingForm.note}
+                        onChange={e => setBookingForm({ ...bookingForm, note: e.target.value })}
+                      ></textarea>
+                    </div>
+                    <button type="submit" className="btn-primary w-full md:w-auto px-8 py-3 flex items-center justify-center gap-2">
+                      <Calendar className="w-5 h-5" />
+                      Xác nhận đặt lịch
+                    </button>
+                  </form>
+                </div>
+              )}
 
-                        <div className="summary-progress">
-                          <div className="progress-label">Tiến độ</div>
-                          <div className="progress-bar small">
-                            <div className="progress-fill" style={{ width: `${getProgressPercentage(trackingResult.trangThai)}%` }}></div>
+              {/* PRODUCT WARRANTY TAB (With Digital Card) */}
+              {activeTab === 'productWarranty' && (
+                <div className="space-y-6">
+                  <h2 className="text-2xl font-bold text-gray-800">Quản lý sản phẩm</h2>
+
+                  <div className="grid lg:grid-cols-3 gap-6">
+                    {/* List */}
+                    <div className="lg:col-span-1 bg-white rounded-2xl shadow-sm border border-gray-100 p-4 h-[calc(100vh-200px)] overflow-y-auto">
+                      <div className="mb-4">
+                        <input
+                          type="search"
+                          placeholder="Tìm sản phẩm..."
+                          className="w-full p-2 rounded-lg border border-gray-200 text-sm"
+                          value={pwSearch}
+                          onChange={e => setPwSearch(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-3">
+                        {filteredProducts.map(product => (
+                          <div
+                            key={product._id}
+                            onClick={() => {
+                              const purchaseDate = new Date(product.ngayMua)
+                              const warrantyEndDate = new Date(purchaseDate.getTime() + product.thoiHanBaoHanhThang * 30 * 24 * 60 * 60 * 1000)
+                              const daysLeft = Math.ceil((warrantyEndDate - new Date()) / (1000 * 60 * 60 * 24))
+                              const totalDays = product.thoiHanBaoHanhThang * 30
+                              const percentUsed = Math.max(0, Math.min(100, ((totalDays - daysLeft) / totalDays) * 100))
+
+                              setProductWarrantyInfo({
+                                product,
+                                purchaseDate,
+                                warrantyEndDate,
+                                daysLeft,
+                                percentUsed,
+                                status: daysLeft > 0 ? 'valid' : 'expired',
+                                tickets: myTickets.filter(t => t.sanPhamId?._id === product._id)
+                              })
+                            }}
+                            className={`p-3 rounded-xl border cursor-pointer transition-all ${productWarrantyInfo?.product._id === product._id
+                              ? 'border-blue-500 bg-blue-50'
+                              : 'border-gray-100 hover:bg-gray-50'
+                              }`}
+                          >
+                            <div className="font-semibold text-gray-800">{product.tenSP}</div>
+                            <div className="text-xs text-gray-500">{product.soSerial}</div>
                           </div>
-                          <div className="progress-percent">{getProgressPercentage(trackingResult.trangThai)}%</div>
-                        </div>
-
-                        <div className="summary-actions">
-                          <button className="btn-primary" onClick={() => {
-                            setWarrantyForm(prev => ({ ...prev, sanPhamId: trackingResult.sanPhamId?._id || '' }))
-                            setActiveTab('createRequest')
-                          }}>➕ Tạo yêu cầu</button>
-                          <button className="btn-secondary" onClick={() => setActiveTab('rate')}>✉️ Liên hệ</button>
-                        </div>
+                        ))}
                       </div>
                     </div>
-                  </aside>
 
-                  {/* Right: details */}
-                  <section className="result-details">
-                    <div className="result-card">
-                      <h4>📝 Mô tả sự cố</h4>
-                      <p className="issue-description">{trackingResult.moTaLoi || 'Không có mô tả'}</p>
-                    </div>
+                    {/* Detail */}
+                    <div className="lg:col-span-2">
+                      {productWarrantyInfo ? (
+                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                          <div className="flex justify-between items-start mb-6">
+                            <div>
+                              <h3 className="text-xl font-bold text-gray-800">{productWarrantyInfo.product.tenSP}</h3>
+                              <p className="text-gray-500">{productWarrantyInfo.product.loaiSanPham} • {productWarrantyInfo.product.thuongHieu}</p>
+                            </div>
+                          </div>
 
-                    <div className="result-card">
-                      <h4>📈 Cập nhật tiến độ</h4>
-                      {trackingResult.moTaTienDo && trackingResult.moTaTienDo.length > 0 ? (
-                        <div className="progress-update-list">
-                          {trackingResult.moTaTienDo
-                            .sort((a, b) => new Date(b.thoiGian) - new Date(a.thoiGian))
-                            .map((item, index) => (
-                              <div key={index} className="progress-update-item">
-                                <div className="update-time">
-                                  🕒 {new Date(item.thoiGian).toLocaleString('vi-VN')}
+                          {/* Timeline */}
+                          <div className="mb-8">
+                            <h4 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                              <History className="w-4 h-4" /> Timeline bảo hành
+                            </h4>
+                            <div className="relative pt-6 pb-2">
+                              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${productWarrantyInfo.status === 'valid' ? 'bg-green-500' : 'bg-red-500'}`}
+                                  style={{ width: `${productWarrantyInfo.percentUsed}%` }}
+                                ></div>
+                              </div>
+                              <div className="flex justify-between mt-2 text-sm text-gray-500">
+                                <div>
+                                  <div className="font-medium text-gray-800">Ngày mua</div>
+                                  <div>{productWarrantyInfo.purchaseDate.toLocaleDateString('vi-VN')}</div>
                                 </div>
-                                <div className="update-content">
-                                  {item.noiDung}
+                                <div className="text-right">
+                                  <div className="font-medium text-gray-800">Hết hạn</div>
+                                  <div>{productWarrantyInfo.warrantyEndDate.toLocaleDateString('vi-VN')}</div>
                                 </div>
                               </div>
-                            ))}
+                            </div>
+                          </div>
+
+                          {/* History */}
+                          <div>
+                            <h4 className="font-semibold text-gray-800 mb-4">Lịch sử sửa chữa</h4>
+                            {productWarrantyInfo.tickets.length > 0 ? (
+                              <div className="space-y-4">
+                                {productWarrantyInfo.tickets.map(ticket => (
+                                  <div key={ticket._id} className="flex items-start gap-4 p-4 bg-gray-50 rounded-xl">
+                                    <div className={`p-2 rounded-full ${getStatusBadge(ticket.trangThai).color}`}>
+                                      {getStatusBadge(ticket.trangThai).icon}
+                                    </div>
+                                    <div>
+                                      <div className="font-medium text-gray-900">Phiếu {ticket.maPhieu}</div>
+                                      <div className="text-sm text-gray-600 mb-1">{ticket.moTaLoi}</div>
+                                      <div className="text-xs text-gray-400">
+                                        {new Date(ticket.ngayTiepNhan).toLocaleDateString('vi-VN')}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-gray-500 italic">Chưa có lịch sử bảo hành</p>
+                            )}
+                          </div>
                         </div>
                       ) : (
-                        <p className="empty-hint">Chưa có cập nhật tiến độ.</p>
+                        <div className="h-full flex flex-col items-center justify-center text-gray-400 p-12 bg-white rounded-2xl border border-gray-100 border-dashed">
+                          <Tag className="w-16 h-16 mb-4 opacity-20" />
+                          <p>Chọn sản phẩm để xem chi tiết</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* CREATE REQUEST TAB */}
+              {activeTab === 'createRequest' && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                  <h2 className="text-2xl font-bold text-gray-800 mb-6">Tạo yêu cầu bảo hành</h2>
+                  <form onSubmit={handleCreateTicket} className="max-w-3xl">
+                    <div className="grid md:grid-cols-2 gap-6 mb-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Sản phẩm (nếu có trong danh sách)</label>
+                        <select
+                          className="w-full p-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                          value={warrantyForm.sanPhamId}
+                          onChange={e => {
+                            const prod = myProducts.find(p => p._id === e.target.value)
+                            setWarrantyForm({
+                              ...warrantyForm,
+                              sanPhamId: e.target.value,
+                              soSerial: prod ? prod.soSerial : ''
+                            })
+                          }}
+                        >
+                          <option value="">-- Chọn sản phẩm --</option>
+                          {myProducts.map(p => (
+                            <option key={p._id} value={p._id}>{p.tenSP}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Số Serial *</label>
+                        <input
+                          type="text"
+                          className="w-full p-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                          value={warrantyForm.soSerial}
+                          onChange={e => setWarrantyForm({ ...warrantyForm, soSerial: e.target.value })}
+                          required
+                          placeholder="Nhập số serial..."
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mb-6">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Mô tả lỗi *</label>
+                      <textarea
+                        className="w-full p-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                        rows="4"
+                        value={warrantyForm.moTaLoi}
+                        onChange={e => setWarrantyForm({ ...warrantyForm, moTaLoi: e.target.value })}
+                        required
+                        placeholder="Mô tả chi tiết vấn đề bạn gặp phải..."
+                      ></textarea>
+                    </div>
+
+                    <div className="mb-8">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Hình ảnh/Video đính kèm</label>
+                      <div className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center hover:bg-gray-50 transition-colors cursor-pointer relative">
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/*,video/*"
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          onChange={e => {
+                            if (e.target.files.length + warrantyForm.attachments.length > MAX_ATTACHMENT_COUNT) {
+                              setError(`Tối đa ${MAX_ATTACHMENT_COUNT} tệp`)
+                              return
+                            }
+                            setWarrantyForm({
+                              ...warrantyForm,
+                              attachments: [...warrantyForm.attachments, ...Array.from(e.target.files)]
+                            })
+                          }}
+                        />
+                        <ImageIcon className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                        <p className="text-sm text-gray-500">Kéo thả hoặc click để tải lên (Tối đa {MAX_ATTACHMENT_COUNT} tệp)</p>
+                      </div>
+                      {warrantyForm.attachments.length > 0 && (
+                        <div className="mt-4 space-y-2">
+                          {warrantyForm.attachments.map((file, idx) => (
+                            <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                              <div className="flex items-center gap-2">
+                                <FileText className="w-4 h-4 text-gray-500" />
+                                <span className="text-sm text-gray-700">{file.name}</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newAtt = [...warrantyForm.attachments]
+                                  newAtt.splice(idx, 1)
+                                  setWarrantyForm({ ...warrantyForm, attachments: newAtt })
+                                }}
+                                className="text-red-500 hover:text-red-700"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
 
+                    <button type="submit" className="btn-primary w-full md:w-auto px-8 py-3" disabled={loading}>
+                      {loading ? 'Đang xử lý...' : 'Gửi yêu cầu bảo hành'}
+                    </button>
+                  </form>
+                </div>
+              )}
 
+              {/* MY TICKETS TAB */}
+              {activeTab === 'myTickets' && (
+                <div className="space-y-6">
+                  <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                    <h2 className="text-2xl font-bold text-gray-800">Phiếu bảo hành của tôi</h2>
+                    <div className="flex gap-2 w-full md:w-auto">
+                      <div className="relative flex-1 md:w-64">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Tìm mã phiếu, sản phẩm..."
+                          className="w-full pl-9 pr-4 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                          value={ticketSearch}
+                          onChange={e => setTicketSearch(e.target.value)}
+                        />
+                      </div>
+                      <select
+                        className="px-4 py-2 rounded-lg border border-gray-200 text-sm outline-none"
+                        value={statusFilter}
+                        onChange={e => setStatusFilter(e.target.value)}
+                      >
+                        <option value="">Tất cả trạng thái</option>
+                        <option value="dang_cho">Đang chờ</option>
+                        <option value="tiep_nhan">Đã tiếp nhận</option>
+                        <option value="dang_sua">Đang sửa</option>
+                        <option value="hoan_tat">Hoàn tất</option>
+                      </select>
+                    </div>
+                  </div>
 
-                    <div className="result-card">
-                      <h4>⏱️ Lịch sử trạng thái</h4>
-                      {trackingResult.lichSuTrangThai && trackingResult.lichSuTrangThai.length > 0 ? (
-                        <div className="timeline">
-                          {trackingResult.lichSuTrangThai
-                            .sort((a, b) => new Date(a.thoiGian) - new Date(b.thoiGian))
-                            .map((item, index) => (
-                              <div key={index} className="timeline-item">
-                                <div className="timeline-marker">
-                                  <div className={`marker-dot ${item.trangThai}`}></div>
-                                  {index < trackingResult.lichSuTrangThai.length - 1 && (
-                                    <div className="marker-line"></div>
-                                  )}
-                                </div>
-                                <div className="timeline-content">
-                                  <div className="timeline-status">
-                                    {getStatusBadge(item.trangThai).icon} {getStatusBadge(item.trangThai).text}
-                                  </div>
-                                  <div className="timeline-time">
-                                    {new Date(item.thoiGian).toLocaleString('vi-VN')}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
+                  <div className="grid gap-4">
+                    {filteredTickets.map(ticket => (
+                      <div key={ticket._id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                        <div className="flex flex-col md:flex-row justify-between gap-4 mb-4">
+                          <div>
+                            <div className="flex items-center gap-3 mb-1">
+                              <h3 className="font-bold text-lg text-gray-800">{ticket.sanPhamId?.tenSP || 'Sản phẩm'}</h3>
+                              <span className="text-sm text-gray-500 bg-gray-100 px-2 py-0.5 rounded text-xs">#{ticket.maPhieu}</span>
+                            </div>
+                            <p className="text-gray-600 text-sm line-clamp-1">{ticket.moTaLoi}</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusBadge(ticket.trangThai).color}`}>
+                              {getStatusBadge(ticket.trangThai).icon}
+                              {getStatusBadge(ticket.trangThai).text}
+                            </span>
+                          </div>
                         </div>
-                      ) : (
-                        <p className="empty-hint">Chưa có lịch sử trạng thái.</p>
-                      )}
-                    </div>
 
-                    <div className="result-card">
-                      <h4>📎 Tệp đính kèm</h4>
-                      {(() => {
-                        const normalize = (p) => p && (p.startsWith('http') ? p : `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${p}`)
+                        <div className="flex items-center justify-between pt-4 border-t border-gray-50">
+                          <div className="text-sm text-gray-500">
+                            Ngày gửi: {new Date(ticket.ngayTiepNhan).toLocaleDateString('vi-VN')}
+                          </div>
+                          <button
+                            onClick={() => {
+                              setTicketCode(ticket.maPhieu)
+                              setActiveTab('track')
+                            }}
+                            className="text-blue-600 font-medium text-sm hover:underline flex items-center gap-1"
+                          >
+                            Xem chi tiết <ChevronRight className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {filteredTickets.length === 0 && (
+                      <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-gray-200">
+                        <p className="text-gray-500">Không tìm thấy phiếu bảo hành nào</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
-                        const parts = []
+              {/* TRACK TAB */}
+              {activeTab === 'track' && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                  <h2 className="text-2xl font-bold text-gray-800 mb-6">Tra cứu phiếu bảo hành</h2>
+                  <form onSubmit={handleTrackTicket} className="flex gap-2 mb-8 max-w-xl">
+                    <input
+                      type="text"
+                      placeholder="Nhập mã phiếu (VD: BH001234)"
+                      className="flex-1 p-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                      value={ticketCode}
+                      onChange={e => setTicketCode(e.target.value)}
+                    />
+                    <button type="submit" className="btn-primary px-6 rounded-lg">Tra cứu</button>
+                  </form>
 
-                        if (trackingResult.hinhAnhLoi && trackingResult.hinhAnhLoi.length > 0) {
-                          parts.push(
-                            <div key="hinhAnhLoi" className="attachments-grid">
-                              {trackingResult.hinhAnhLoi.map((p, idx) => {
-                                const src = normalize(p)
-                                return (
-                                  <a key={`img-${idx}`} href={src || '#'} className="attachment-thumb" target="_blank" rel="noreferrer">
-                                    <img src={src} alt={`Hình ${idx + 1}`} className="attachment-thumb-img" />
-                                    <div className="attachment-info">
-                                      <div className="attachment-name">{`Hình ${idx + 1}`}</div>
-                                    </div>
-                                  </a>
-                                )
-                              })}
-                            </div>
-                          )
-                        }
-
-                        const imageSet = new Set((trackingResult.hinhAnhLoi || []).map(normalize))
-                        const isValidPath = (p) => !!p && (p.startsWith('http') || p.startsWith('/'))
-                        const uniqueFiles = (trackingResult.tepDinhKem || []).filter(f => {
-                          if (!isValidPath(f.duLieu)) return false
-                          const url = normalize(f.duLieu)
-                          return !imageSet.has(url)
-                        })
-
-                        if (uniqueFiles.length > 0) {
-                          parts.push(
-                            <div key="tepDinhKem" className="attachments-grid">
-                              {uniqueFiles.map((f, i) => {
-                                const src = f.duLieu && (f.duLieu.startsWith('http') ? f.duLieu : `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${f.duLieu}`)
-                                const isImage = typeof f.kieuNoiDung === 'string' && f.kieuNoiDung.startsWith('image/')
-                                return (
-                                  <a key={i} href={src || '#'} className="attachment-thumb" target="_blank" rel="noreferrer">
-                                    {isImage ? (
-                                      <img src={src} alt={f.tenTep || `Hình ${i + 1}`} className="attachment-thumb-img" />
-                                    ) : (
-                                      <div className="attachment-file-icon">📎</div>
-                                    )}
-                                    <div className="attachment-info">
-                                      <div className="attachment-name">{f.tenTep || `Tệp ${i + 1}`}</div>
-                                      <div className="attachment-meta">{f.kieuNoiDung || ''} · {formatAttachmentSize(f.kichThuoc)}</div>
-                                    </div>
-                                  </a>
-                                )
-                              })}
-                            </div>
-                          )
-                        }
-
-                        if (parts.length === 0) return <p className="empty-hint">Không có tệp đính kèm.</p>
-                        return parts
-                      })()}
-                    </div>
-
-                    {/* Payment Section */}
-                    {(() => {
-                      // Sử dụng tongTien từ database (đã được tính đúng) thay vì tính lại
-                      const totalCost = trackingResult.tongTien || 0;
-
-                      if (totalCost > 0) {
-                        return (
-                          <div className="result-card">
-                            <h4>💰 Chi phí cần thanh toán</h4>
-                            <div className="payment-info">
-                              <div className="cost-row">
-                                <span>Tổng chi phí:</span>
-                                <span className="cost-value">{totalCost.toLocaleString('vi-VN')} VNĐ</span>
-                              </div>
-                              <div className="payment-status-row">
-                                <span>Trạng thái:</span>
-                                <span className={`status-badge ${trackingResult.trangThaiThanhToan === 'da_thanh_toan' ? 'success' : 'pending'}`}>
-                                  {trackingResult.trangThaiThanhToan === 'da_thanh_toan' ? '✅ Đã thanh toán' : '⏳ Chưa thanh toán'}
+                  {trackingResult && (
+                    <div className="space-y-6 animate-fade-in">
+                      {/* Status Steps */}
+                      <div className="relative py-8">
+                        <div className="absolute top-1/2 left-0 w-full h-1 bg-gray-100 -translate-y-1/2 z-0"></div>
+                        <div className="relative z-10 flex justify-between">
+                          {['tiep_nhan', 'dang_kiem_tra', 'dang_sua', 'hoan_tat'].map((step, idx) => {
+                            const isCompleted = getProgressPercentage(trackingResult.trangThai) >= getProgressPercentage(step)
+                            const isCurrent = trackingResult.trangThai === step
+                            return (
+                              <div key={step} className="flex flex-col items-center gap-2 bg-white px-2">
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-colors ${isCompleted ? 'bg-green-500 border-green-500 text-white' : 'bg-white border-gray-200 text-gray-300'
+                                  }`}>
+                                  {isCompleted ? <CheckCircle2 className="w-6 h-6" /> : <div className="w-3 h-3 rounded-full bg-gray-200"></div>}
+                                </div>
+                                <span className={`text-xs font-medium ${isCurrent ? 'text-blue-600' : 'text-gray-500'}`}>
+                                  {getStatusBadge(step).text}
                                 </span>
                               </div>
+                            )
+                          })}
+                        </div>
+                      </div>
 
+                      {/* Info Grid */}
+                      <div className="grid md:grid-cols-2 gap-6">
+                        <div className="p-6 bg-gray-50 rounded-xl">
+                          <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                            <Tag className="w-5 h-5 text-blue-600" />
+                            Thông tin sản phẩm
+                          </h3>
+                          <div className="space-y-3 text-sm">
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">Sản phẩm:</span>
+                              <span className="font-medium">{trackingResult.sanPham?.tenSP}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">Số Serial:</span>
+                              <span className="font-medium">{trackingResult.sanPham?.soSerial}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">Mã phiếu:</span>
+                              <span className="font-mono bg-white px-2 py-0.5 rounded border border-gray-200">
+                                {trackingResult.maPhieu}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="p-6 bg-gray-50 rounded-xl">
+                          <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                            <Wrench className="w-5 h-5 text-purple-600" />
+                            Chi tiết sửa chữa
+                          </h3>
+                          <div className="space-y-3 text-sm">
+                            <div>
+                              <span className="text-gray-500 block mb-1">Mô tả lỗi:</span>
+                              <p className="font-medium text-gray-800 bg-white p-3 rounded-lg border border-gray-200">
+                                {trackingResult.moTaLoi}
+                              </p>
+                            </div>
+                            {trackingResult.ketQuaKiemTra && (
+                              <div>
+                                <span className="text-gray-500 block mb-1">Kết quả kiểm tra:</span>
+                                <p className="font-medium text-gray-800 bg-white p-3 rounded-lg border border-gray-200">
+                                  {trackingResult.ketQuaKiemTra}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Payment Section */}
+                      {(() => {
+                        const costs = []
+                        if (trackingResult.chiPhiPhatSinh) {
+                          costs.push({ moTaChiPhi: 'Chi phí phát sinh', soTien: trackingResult.chiPhiPhatSinh })
+                        }
+                        if (trackingResult.linhKienThayThe && Array.isArray(trackingResult.linhKienThayThe)) {
+                          trackingResult.linhKienThayThe.forEach(item => {
+                            costs.push({ moTaChiPhi: item.tenLinhKien || 'Linh kiện', soTien: item.chiPhi || 0 })
+                          })
+                        }
+
+                        if (costs.length === 0) return null
+
+                        return (
+                          <div className="p-6 bg-yellow-50 rounded-xl border border-yellow-100 payment-info">
+                            <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                              <span className="text-xl">💰</span>
+                              Chi phí sửa chữa
+                            </h3>
+                            <div className="bg-white rounded-lg border border-yellow-200 overflow-hidden mb-4">
+                              <table className="w-full text-sm">
+                                <thead className="bg-yellow-50/50">
+                                  <tr>
+                                    <th className="p-3 text-left">Hạng mục</th>
+                                    <th className="p-3 text-right">Chi phí</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {costs.map((cost, idx) => (
+                                    <tr key={idx}>
+                                      <td className="p-3">{cost.moTaChiPhi}</td>
+                                      <td className="p-3 text-right font-mono">
+                                        {cost.soTien?.toLocaleString('vi-VN')} đ
+                                      </td>
+                                    </tr>
+                                  ))}
+                                  <tr className="font-bold bg-gray-50">
+                                    <td className="p-3">Tổng cộng</td>
+                                    <td className="p-3 text-right text-red-600">
+                                      {costs.reduce((sum, c) => sum + (c.soTien || 0), 0).toLocaleString('vi-VN')} đ
+                                    </td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
+
+                            <div className="flex justify-end items-center gap-4">
+                              <div className="text-sm">
+                                <span className="text-gray-500">Trạng thái: </span>
+                                <span className={`font-bold ${trackingResult.trangThaiThanhToan === 'da_thanh_toan' ? 'text-green-600' : 'text-red-500'}`}>
+                                  {trackingResult.trangThaiThanhToan === 'da_thanh_toan' ? 'Đã thanh toán' : 'Chưa thanh toán'}
+                                </span>
+                              </div>
                               {trackingResult.trangThaiThanhToan !== 'da_thanh_toan' && (
                                 <button
-                                  className="btn-primary btn-payment"
-                                  onClick={() => handlePayment(trackingResult.maPhieu)}
+                                  onClick={() => handlePayment(trackingResult._id || trackingResult.maPhieu)}
+                                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium shadow-sm transition-colors"
                                 >
-                                  💳 Thanh toán ngay
+                                  Thanh toán ngay
                                 </button>
                               )}
                             </div>
                           </div>
-                        );
-                      }
-                      return null;
-                    })()}
-
-                    {trackingResult.nhanVienTiepNhanId && (
-                      <div className="result-card">
-                        <h4>👷 Nhân viên xử lý</h4>
-                        <div className="detail-grid">
-                          <div className="detail-item">
-                            <span className="label">Họ tên:</span>
-                            <span className="value">{trackingResult.nhanVienTiepNhanId.hoTen}</span>
-                          </div>
-                          <div className="detail-item">
-                            <span className="label">Email:</span>
-                            <span className="value">{trackingResult.nhanVienTiepNhanId.email}</span>
-                          </div>
-                          {trackingResult.nhanVienTiepNhanId.soDienThoai && (
-                            <div className="detail-item">
-                              <span className="label">SĐT:</span>
-                              <span className="value">{trackingResult.nhanVienTiepNhanId.soDienThoai}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {trackingResult.qualityRating && (
-                      <div className="result-card rating-card">
-                        <h4>⭐ Đánh giá của khách hàng</h4>
-                        <div className="rating-display">
-                          <div className="rating-stars">
-                            {[1, 2, 3, 4, 5].map(star => (
-                              <span key={star} className={star <= trackingResult.qualityRating ? 'star-filled' : 'star-empty'}>
-                                ⭐
-                              </span>
-                            ))}
-                            <span className="rating-score">{trackingResult.qualityRating}/5</span>
-                          </div>
-                          {trackingResult.qualityComments && (
-                            <div className="rating-comment">
-                              <strong>💬 Nhận xét:</strong>
-                              <p>{trackingResult.qualityComments}</p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </section>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Settings Tab */}
-        {activeTab === 'settings' && (
-          <div className="settings-section">
-            <h2 className="section-title">⚙️ Cài đặt tài khoản</h2>
-            <SettingsPage onSaved={(u) => { /* refresh user if needed */ }} />
-          </div>
-        )}
-
-        {/* Rating Tab */}
-        {activeTab === 'rate' && (
-          <div className="rate-section">
-            <h2 className="section-title">⭐ Đánh giá chất lượng</h2>
-
-            {completedTickets.filter(t => !t.qualityRating).length === 0 ? (
-              <div className="empty-state">
-                {completedTickets.length === 0 ? (
-                  <p>🎯 Bạn chưa có phiếu nào hoàn tất để đánh giá</p>
-                ) : (
-                  <p>✅ Bạn đã đánh giá tất cả các phiếu hoàn tất rồi</p>
-                )}
-              </div>
-            ) : (
-              <div className="rating-container">
-                <div className="info-box">
-                  <p>💡 <strong>Lưu ý:</strong> Mỗi phiếu bảo hành chỉ được đánh giá một lần duy nhất. Hãy suy nghĩ kỹ trước khi gửi đánh giá.</p>
-                </div>
-                <form onSubmit={handleSubmitRating} className="rating-form">
-                  <div className="form-group">
-                    <label>Chọn phiếu đã hoàn tất</label>
-                    <select
-                      value={ratingForm.ticketId}
-                      onChange={(e) => setRatingForm({ ...ratingForm, ticketId: e.target.value })}
-                      required
-                    >
-                      <option value="">-- Chọn phiếu --</option>
-                      {completedTickets.filter(t => !t.qualityRating).map(ticket => (
-                        <option key={ticket._id} value={ticket._id}>
-                          {ticket.maPhieu} - {ticket.sanPhamId?.tenSP}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Đánh giá chất lượng dịch vụ</label>
-                    <div className="star-rating">
-                      {[1, 2, 3, 4, 5].map(star => (
-                        <button
-                          key={star}
-                          type="button"
-                          className={`star-btn ${star <= ratingForm.rating ? 'active' : ''}`}
-                          onClick={() => setRatingForm({ ...ratingForm, rating: star })}
-                        >
-                          ⭐
-                        </button>
-                      ))}
+                        )
+                      })()}
                     </div>
-                    <p className="rating-label">
-                      {ratingForm.rating === 0 && 'Chọn số sao'}
-                      {ratingForm.rating === 1 && '⭐ Rất không hài lòng'}
-                      {ratingForm.rating === 2 && '⭐⭐ Không hài lòng'}
-                      {ratingForm.rating === 3 && '⭐⭐⭐ Bình thường'}
-                      {ratingForm.rating === 4 && '⭐⭐⭐⭐ Hài lòng'}
-                      {ratingForm.rating === 5 && '⭐⭐⭐⭐⭐ Rất hài lòng'}
-                    </p>
-                  </div>
+                  )}
+                </div>
+              )}
 
-                  <div className="form-group">
-                    <label>Nhận xét chi tiết (không bắt buộc)</label>
-                    <textarea
-                      value={ratingForm.comment}
-                      onChange={(e) => setRatingForm({ ...ratingForm, comment: e.target.value })}
-                      rows="4"
-                      placeholder="Chia sẻ trải nghiệm của bạn về dịch vụ bảo hành..."
-                    />
-                  </div>
+              {/* RATE TAB */}
+              {activeTab === 'rate' && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                  <h2 className="text-2xl font-bold text-gray-800 mb-6">Đánh giá dịch vụ</h2>
 
-                  <div className="form-actions">
-                    <button type="submit" className="btn-primary" disabled={loading || !ratingForm.ticketId}>
-                      {loading ? '⏳ Đang gửi...' : '📤 Gửi đánh giá'}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            )}
-          </div>
-        )}
-      </main>
+                  {myTickets.filter(t => t.trangThai === 'hoan_tat' && !t.qualityRating).length === 0 ? (
+                    <div className="text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                      <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <CheckCircle2 className="w-8 h-8 text-green-600" />
+                      </div>
+                      <h3 className="text-lg font-bold text-gray-800 mb-2">Không có phiếu cần đánh giá</h3>
+                      <p className="text-gray-600">
+                        {myTickets.filter(t => t.trangThai === 'hoan_tat').length === 0
+                          ? "Bạn chưa có phiếu bảo hành nào đã hoàn tất."
+                          : "Bạn đã đánh giá tất cả các phiếu hoàn tất. Cảm ơn bạn!"}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="max-w-2xl mx-auto">
+                      <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-6 flex gap-3">
+                        <div className="flex-shrink-0 mt-0.5">
+                          <Star className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <p className="text-sm text-blue-800">
+                          <strong>Lưu ý:</strong> Mỗi phiếu bảo hành chỉ được đánh giá một lần duy nhất. Ý kiến của bạn giúp chúng tôi cải thiện chất lượng dịch vụ.
+                        </p>
+                      </div>
+
+                      <form onSubmit={handleSubmitRating} className="space-y-6">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Chọn phiếu đã hoàn tất</label>
+                          <select
+                            value={ratingForm.ticketId}
+                            onChange={(e) => setRatingForm({ ...ratingForm, ticketId: e.target.value })}
+                            className="w-full p-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                            required
+                          >
+                            <option value="">-- Chọn phiếu --</option>
+                            {myTickets.filter(t => t.trangThai === 'hoan_tat' && !t.qualityRating).map(ticket => (
+                              <option key={ticket._id} value={ticket._id}>
+                                {ticket.maPhieu} - {ticket.sanPhamId?.tenSP}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Mức độ hài lòng</label>
+                          <div className="flex gap-4 justify-center p-6 bg-gray-50 rounded-xl border border-gray-100">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <button
+                                key={star}
+                                type="button"
+                                onClick={() => setRatingForm({ ...ratingForm, rating: star })}
+                                className="focus:outline-none transition-transform hover:scale-110"
+                              >
+                                <Star
+                                  className={`w-10 h-10 ${star <= ratingForm.rating
+                                    ? 'fill-yellow-400 text-yellow-400'
+                                    : 'text-gray-300 hover:text-yellow-200'
+                                    }`}
+                                />
+                              </button>
+                            ))}
+                          </div>
+                          {ratingForm.rating > 0 && (
+                            <p className="text-center mt-2 text-sm font-medium text-yellow-600">
+                              {ratingForm.rating === 5 && 'Tuyệt vời! 😍'}
+                              {ratingForm.rating === 4 && 'Hài lòng 🙂'}
+                              {ratingForm.rating === 3 && 'Bình thường 😐'}
+                              {ratingForm.rating === 2 && 'Không hài lòng 😞'}
+                              {ratingForm.rating === 1 && 'Rất tệ 😡'}
+                            </p>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Nhận xét của bạn</label>
+                          <textarea
+                            value={ratingForm.comment}
+                            onChange={(e) => setRatingForm({ ...ratingForm, comment: e.target.value })}
+                            placeholder="Chia sẻ trải nghiệm của bạn về dịch vụ sửa chữa..."
+                            className="w-full p-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none min-h-[120px]"
+                            required
+                          />
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={loading || !ratingForm.ticketId || ratingForm.rating === 0}
+                          className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                          {loading ? (
+                            <>
+                              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                              Đang gửi...
+                            </>
+                          ) : (
+                            <>
+                              <Star className="w-5 h-5" />
+                              Gửi đánh giá
+                            </>
+                          )}
+                        </button>
+                      </form>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* SETTINGS TAB */}
+              {activeTab === 'settings' && (
+                <SettingsPage user={user} />
+              )}
+
+            </motion.div>
+          </AnimatePresence>
+        </main>
+      </div>
+
+
     </div>
   )
 }
