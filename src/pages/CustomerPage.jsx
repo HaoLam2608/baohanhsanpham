@@ -1039,8 +1039,8 @@ export default function CustomerPage({ onLogout }) {
                     )}
 
                     {(() => {
-                      const totalCost = (ticket.chiPhiPhatSinh || 0) +
-                        (ticket.linhKienThayThe || []).reduce((sum, item) => sum + (item.chiPhi || 0), 0);
+                      // Sử dụng tongTien từ database (đã được tính đúng)
+                      const totalCost = ticket.tongTien || 0;
 
                       if (totalCost > 0 && ticket.trangThaiThanhToan !== 'da_thanh_toan') {
                         return (
@@ -1571,8 +1571,8 @@ export default function CustomerPage({ onLogout }) {
 
                     {/* Payment Section */}
                     {(() => {
-                      const totalCost = (trackingResult.chiPhiPhatSinh || 0) +
-                        (trackingResult.linhKienThayThe || []).reduce((sum, item) => sum + (item.chiPhi || 0), 0);
+                      // Sử dụng tongTien từ database (đã được tính đúng) thay vì tính lại
+                      const totalCost = trackingResult.tongTien || 0;
 
                       if (totalCost > 0) {
                         return (

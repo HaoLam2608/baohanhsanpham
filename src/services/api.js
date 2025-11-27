@@ -182,6 +182,52 @@ export const employeeAPI = {
     })
     return handleResponse(response)
   },
+
+  // Thêm linh kiện vào phiếu
+  addPartToTicket: async (ticketId, partData) => {
+    const response = await fetch(`${API_BASE_URL}/employee/${ticketId}/add-part`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(partData),
+    })
+    return handleResponse(response)
+  },
+}
+
+// ============ INVENTORY API ============
+export const inventoryAPI = {
+  getAll: async () => {
+    const response = await fetch(`${API_BASE_URL}/linhkien`, {
+      headers: getAuthHeaders(),
+    })
+    return handleResponse(response)
+  },
+
+  create: async (data) => {
+    const response = await fetch(`${API_BASE_URL}/linhkien`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    })
+    return handleResponse(response)
+  },
+
+  update: async (id, data) => {
+    const response = await fetch(`${API_BASE_URL}/linhkien/${id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    })
+    return handleResponse(response)
+  },
+
+  delete: async (id) => {
+    const response = await fetch(`${API_BASE_URL}/linhkien/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    })
+    return handleResponse(response)
+  }
 }
 
 // ============ MANAGER API ============

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { managerAPI, generalAPI } from '../services/api'
+import { managerAPI, generalAPI, inventoryAPI } from '../services/api'
 import '../styles/ManagerPage.css'
 import SettingsPage from './SettingsPage'
 
@@ -65,6 +65,20 @@ export default function ManagerPage({ onLogout }) {
   const [employeeRoleFilter, setEmployeeRoleFilter] = useState('all')
   const [customerSearch, setCustomerSearch] = useState('')
 
+  // Inventory State
+  const [inventory, setInventory] = useState([])
+  const [showInventoryModal, setShowInventoryModal] = useState(false)
+  const [inventoryForm, setInventoryForm] = useState({
+    maLinhKien: '',
+    tenLinhKien: '',
+    soLuongTon: 0,
+    giaNhap: 0,
+    giaXuat: 0,
+    moTa: ''
+  })
+  const [editingPart, setEditingPart] = useState(null)
+  const [inventorySearch, setInventorySearch] = useState('')
+
   // Load data khi tab thay đổi
   useEffect(() => {
     loadData()
@@ -89,6 +103,21 @@ export default function ManagerPage({ onLogout }) {
       case 'tickets':
         await loadTickets()
         break
+      case 'inventory':
+        await loadInventory()
+        break
+    }
+  }
+
+  const loadInventory = async () => {
+    try {
+      setLoading(true)
+      const data = await inventoryAPI.getAll()
+      setInventory(data || [])
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -190,6 +219,49 @@ export default function ManagerPage({ onLogout }) {
       const result = await managerAPI.getAllTickets()
       const ticketsData = result.tickets || result.data || result || []
       setTickets(ticketsData)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSaveInventory = async (e) => {
+    e.preventDefault()
+    try {
+      setLoading(true)
+      if (editingPart) {
+        await inventoryAPI.update(editingPart._id, inventoryForm)
+        setSuccess('✅ Cập nhật linh kiện thành công')
+      } else {
+        await inventoryAPI.create(inventoryForm)
+        setSuccess('✅ Thêm linh kiện thành công')
+      }
+      setShowInventoryModal(false)
+      setInventoryForm({
+        maLinhKien: '',
+        tenLinhKien: '',
+        soLuongTon: 0,
+        giaNhap: 0,
+        giaXuat: 0,
+        moTa: ''
+      })
+      setEditingPart(null)
+      loadInventory()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteInventory = async (id) => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa linh kiện này?')) return
+    try {
+      setLoading(true)
+      await inventoryAPI.delete(id)
+      setSuccess('✅ Đã xóa linh kiện')
+      loadInventory()
     } catch (err) {
       setError(err.message)
     } finally {
@@ -523,6 +595,13 @@ export default function ManagerPage({ onLogout }) {
         >
           <span className="tab-icon">👤</span>
           <span>Khách hàng</span>
+        </button>
+        <button
+          className={`nav-tab ${activeTab === 'inventory' ? 'active' : ''}`}
+          onClick={() => setActiveTab('inventory')}
+        >
+          <span className="tab-icon">📦</span>
+          <span>Kho linh kiện</span>
         </button>
         <button
           className={`nav-tab ${activeTab === 'settings' ? 'active' : ''}`}
@@ -1238,6 +1317,104 @@ export default function ManagerPage({ onLogout }) {
             </div>
           </div>
         )}
+        {/* Inventory Tab */}
+        {activeTab === 'inventory' && (
+          <div className="inventory-section">
+            <div className="section-header">
+              <h2 className="section-title">📦 Kho linh kiện</h2>
+              <button
+                className="btn-primary"
+                onClick={() => {
+                  setEditingPart(null)
+                  setInventoryForm({
+                    maLinhKien: '',
+                    tenLinhKien: '',
+                    soLuongTon: 0,
+                    giaNhap: 0,
+                    giaXuat: 0,
+                    moTa: ''
+                  })
+                  setShowInventoryModal(true)
+                }}
+              >
+                ➕ Thêm linh kiện
+              </button>
+            </div>
+
+            <div className="filter-section">
+              <div className="filter-group" style={{ flex: 1 }}>
+                <label>🔍 Tìm kiếm:</label>
+                <input
+                  type="text"
+                  placeholder="Mã, tên linh kiện..."
+                  value={inventorySearch}
+                  onChange={(e) => setInventorySearch(e.target.value)}
+                  className="filter-input"
+                />
+              </div>
+            </div>
+
+            <div className="table-container">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Mã linh kiện</th>
+                    <th>Tên linh kiện</th>
+                    <th>Tồn kho</th>
+                    <th>Giá nhập</th>
+                    <th>Giá xuất</th>
+                    <th>Mô tả</th>
+                    <th>Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inventory.filter(item =>
+                    item.tenLinhKien.toLowerCase().includes(inventorySearch.toLowerCase()) ||
+                    item.maLinhKien.toLowerCase().includes(inventorySearch.toLowerCase())
+                  ).map(item => (
+                    <tr key={item._id}>
+                      <td><span className="ticket-code">{item.maLinhKien}</span></td>
+                      <td><strong>{item.tenLinhKien}</strong></td>
+                      <td>
+                        <span className={`badge ${item.soLuongTon <= 5 ? 'badge-danger' : 'badge-success'}`}>
+                          {item.soLuongTon}
+                        </span>
+                      </td>
+                      <td>{item.giaNhap?.toLocaleString('vi-VN')} đ</td>
+                      <td>{item.giaXuat?.toLocaleString('vi-VN')} đ</td>
+                      <td>{item.moTa}</td>
+                      <td className="action-buttons">
+                        <button
+                          className="btn-icon btn-edit"
+                          onClick={() => {
+                            setEditingPart(item)
+                            setInventoryForm(item)
+                            setShowInventoryModal(true)
+                          }}
+                          title="Sửa"
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          className="btn-icon btn-delete"
+                          onClick={() => handleDeleteInventory(item._id)}
+                          title="Xóa"
+                        >
+                          🗑️
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {inventory.length === 0 && (
+                    <tr>
+                      <td colSpan="7" className="text-center">Chưa có linh kiện nào</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Product Modal */}
@@ -1791,6 +1968,97 @@ export default function ManagerPage({ onLogout }) {
             <div className="modal-actions">
               <button className="btn-secondary" onClick={() => setShowProductDetailModal(false)}>Đóng</button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Inventory Modal */}
+      {showInventoryModal && (
+        <div className="modal-overlay" onClick={() => setShowInventoryModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>{editingPart ? '✏️ Sửa linh kiện' : '➕ Thêm linh kiện mới'}</h3>
+              <button className="modal-close" onClick={() => setShowInventoryModal(false)}>×</button>
+            </div>
+
+            <form onSubmit={handleSaveInventory} className="modal-form">
+              <div className="form-group">
+                <label>Mã linh kiện *</label>
+                <input
+                  type="text"
+                  value={inventoryForm.maLinhKien}
+                  onChange={(e) => setInventoryForm({ ...inventoryForm, maLinhKien: e.target.value })}
+                  placeholder="VD: LK001"
+                  required
+                  disabled={!!editingPart}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Tên linh kiện *</label>
+                <input
+                  type="text"
+                  value={inventoryForm.tenLinhKien}
+                  onChange={(e) => setInventoryForm({ ...inventoryForm, tenLinhKien: e.target.value })}
+                  placeholder="VD: Dây cước Yonex BG65"
+                  required
+                />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Số lượng tồn *</label>
+                  <input
+                    type="number"
+                    value={inventoryForm.soLuongTon}
+                    onChange={(e) => setInventoryForm({ ...inventoryForm, soLuongTon: parseInt(e.target.value) })}
+                    min="0"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Giá nhập (VNĐ) *</label>
+                  <input
+                    type="number"
+                    value={inventoryForm.giaNhap}
+                    onChange={(e) => setInventoryForm({ ...inventoryForm, giaNhap: parseInt(e.target.value) })}
+                    min="0"
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Giá xuất (VNĐ) *</label>
+                  <input
+                    type="number"
+                    value={inventoryForm.giaXuat}
+                    onChange={(e) => setInventoryForm({ ...inventoryForm, giaXuat: parseInt(e.target.value) })}
+                    min="0"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Mô tả</label>
+                <textarea
+                  value={inventoryForm.moTa}
+                  onChange={(e) => setInventoryForm({ ...inventoryForm, moTa: e.target.value })}
+                  rows="3"
+                />
+              </div>
+
+              <div className="modal-actions">
+                <button type="submit" className="btn-primary" disabled={loading}>
+                  {loading ? '⏳ Đang lưu...' : (editingPart ? '💾 Cập nhật' : '➕ Thêm mới')}
+                </button>
+                <button type="button" className="btn-secondary" onClick={() => setShowInventoryModal(false)}>
+                  Hủy
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

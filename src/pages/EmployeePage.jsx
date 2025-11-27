@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { employeeAPI, storage } from '../services/api'
+import { employeeAPI, storage, inventoryAPI } from '../services/api'
 import '../styles/EmployeePage.css'
 import SettingsPage from './SettingsPage'
 
@@ -51,6 +51,19 @@ export default function EmployeePage({ onLogout }) {
   })
   const [uploadImages, setUploadImages] = useState([])
   const [imagePreview, setImagePreview] = useState([])
+
+  // Inventory State
+  const [inventory, setInventory] = useState([])
+  const [partSelection, setPartSelection] = useState({
+    linhKienId: '',
+    soLuong: 1
+  })
+
+  // Complete Repair State
+  const [completeForm, setCompleteForm] = useState({
+    moTaXuLy: '',
+    chiPhiPhatSinh: 0
+  })
 
   const user = storage.getUser()
 
@@ -157,26 +170,6 @@ export default function EmployeePage({ onLogout }) {
     }
   }
 
-  const handleCompleteRepair = async (e) => {
-    e.preventDefault()
-    try {
-      setLoading(true)
-      setError('')
-
-      await employeeAPI.completeRepair(selectedTicket._id, repairForm)
-
-      setSuccess('✅ Đã hoàn tất sửa chữa')
-      setShowRepairModal(false)
-      setRepairForm({ ghiChu: '', chiPhiPhatSinh: 0 })
-      loadMyTasks()
-      setSelectedTicket(null)
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
   const handleMarkUnableToRepair = async () => {
     try {
       setLoading(true)
@@ -258,6 +251,82 @@ export default function EmployeePage({ onLogout }) {
       imagePreview.forEach(url => URL.revokeObjectURL(url))
       setImagePreview([])
 
+      loadMyTasks()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleAddPart = async (e) => {
+    e.preventDefault()
+    try {
+      setLoading(true)
+      setError('')
+
+      if (!partSelection.linhKienId) {
+        setError('Vui lòng chọn linh kiện')
+        return
+      }
+
+      await employeeAPI.addPartToTicket(selectedTicket._id, partSelection)
+
+      setSuccess('✅ Đã thêm linh kiện vào phiếu')
+      setPartSelection({ linhKienId: '', soLuong: 1 })
+
+      // Refresh ticket data
+      loadMyTasks()
+      // Also refresh inventory to show updated stock
+      const invData = await inventoryAPI.getAll()
+      setInventory(invData || [])
+
+      // Close modal to refresh data properly or just reload tasks
+      // For now we keep modal open but we might need to refresh selectedTicket
+      // Since selectedTicket is state, we need to update it from the reloaded tasks
+      // But loadMyTasks updates myTasks, not selectedTicket directly.
+      // We can find the updated ticket in myTasks after reload.
+
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (showDetailModal) {
+      const loadInv = async () => {
+        try {
+          const data = await inventoryAPI.getAll()
+          setInventory(data || [])
+        } catch (err) {
+          console.error('Error loading inventory:', err)
+        }
+      }
+      loadInv()
+    }
+  }, [showDetailModal])
+
+  const handleCompleteRepair = async (e) => {
+    e.preventDefault()
+    try {
+      setLoading(true)
+      setError('')
+
+      // Prepare data in correct format for backend
+      const requestData = {
+        moTaXuLy: completeForm.moTaXuLy,
+        ghiChu: completeForm.moTaXuLy, // Use same text for history
+        chiPhiPhatSinh: completeForm.chiPhiPhatSinh,
+        linhKienThayThe: [] // Empty array as we use linhKienSuDung instead
+      }
+
+      await employeeAPI.completeRepair(selectedTicket._id, requestData)
+
+      setSuccess('✅ Hoàn tất sửa chữa thành công')
+      setShowRepairModal(false)
+      setCompleteForm({ moTaXuLy: '', chiPhiPhatSinh: 0 })
       loadMyTasks()
     } catch (err) {
       setError(err.message)
@@ -969,6 +1038,66 @@ export default function EmployeePage({ onLogout }) {
                 </div>
               </div>
 
+              {/* Lịch sử cập nhật tiến độ */}
+              {selectedTicket.moTaTienDo && selectedTicket.moTaTienDo.length > 0 && (
+                <div className="issue-card">
+                  <div className="issue-card-header">
+                    <span className="issue-icon">📈</span>
+                    <h4>Cập nhật tiến độ</h4>
+                  </div>
+                  <div className="issue-card-body">
+                    {selectedTicket.moTaTienDo.map((item, idx) => (
+                      <div key={idx} style={{ marginBottom: '12px', padding: '10px', background: '#f8fbff', borderRadius: '6px', borderLeft: '3px solid #3b82f6' }}>
+                        <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '4px' }}>
+                          🕒 {new Date(item.thoiGian).toLocaleTimeString('vi-VN')} {new Date(item.thoiGian).toLocaleDateString('vi-VN')}
+                        </div>
+                        <div style={{ color: '#1e293b' }}>{item.noiDung}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Danh sách linh kiện đã sử dụng */}
+              {selectedTicket.linhKienSuDung && selectedTicket.linhKienSuDung.length > 0 && (
+                <div className="issue-card">
+                  <div className="issue-card-header">
+                    <span className="issue-icon">🔩</span>
+                    <h4>Linh kiện đã sử dụng</h4>
+                  </div>
+                  <div className="issue-card-body">
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+                          <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: '0.85rem' }}>Tên linh kiện</th>
+                          <th style={{ padding: '8px', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>SL</th>
+                          <th style={{ padding: '8px', textAlign: 'right', color: '#64748b', fontSize: '0.85rem' }}>Đơn giá</th>
+                          <th style={{ padding: '8px', textAlign: 'right', color: '#64748b', fontSize: '0.85rem' }}>Thành tiền</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedTicket.linhKienSuDung.map((part, idx) => (
+                          <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '10px', fontWeight: 500 }}>{part.tenLinhKien}</td>
+                            <td style={{ padding: '10px', textAlign: 'center' }}>x{part.soLuong}</td>
+                            <td style={{ padding: '10px', textAlign: 'right' }}>{part.donGia?.toLocaleString('vi-VN')}đ</td>
+                            <td style={{ padding: '10px', textAlign: 'right', fontWeight: 600, color: '#3b82f6' }}>
+                              {part.thanhTien?.toLocaleString('vi-VN')}đ
+                            </td>
+                          </tr>
+                        ))}
+                        <tr style={{ borderTop: '2px solid #e2e8f0', background: '#f8fbff' }}>
+                          <td colSpan="3" style={{ padding: '10px', fontWeight: 600 }}>Tổng chi phí linh kiện:</td>
+                          <td style={{ padding: '10px', textAlign: 'right', fontWeight: 700, color: '#3b82f6', fontSize: '1.1rem' }}>
+                            {selectedTicket.linhKienSuDung.reduce((sum, p) => sum + (p.thanhTien || 0), 0).toLocaleString('vi-VN')}đ
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
               {/* Quản lý sửa chữa - chỉ hiện khi đang xử lý */}
               {(selectedTicket.trangThai === 'dang_kiem_tra' || selectedTicket.trangThai === 'dang_sua') && (
                 <div className="detail-section detail-full management-section">
@@ -988,6 +1117,41 @@ export default function EmployeePage({ onLogout }) {
                       </div>
                       <button type="submit" className="btn-small btn-primary" disabled={loading || !progressUpdate.moTaTienDo.trim()}>
                         {loading ? '⏳ Đang cập nhật...' : '📝 Cập nhật tiến độ'}
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* Thêm linh kiện */}
+                  <div className="management-card">
+                    <h5>🔩 Thêm linh kiện</h5>
+                    <form onSubmit={handleAddPart}>
+                      <div className="form-group">
+                        <label>Chọn linh kiện</label>
+                        <select
+                          value={partSelection.linhKienId}
+                          onChange={(e) => setPartSelection({ ...partSelection, linhKienId: e.target.value })}
+                          required
+                        >
+                          <option value="">-- Chọn linh kiện --</option>
+                          {inventory.map(part => (
+                            <option key={part._id} value={part._id} disabled={part.soLuongTon <= 0}>
+                              {part.tenLinhKien} - {part.giaXuat.toLocaleString('vi-VN')}đ (Còn: {part.soLuongTon})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label>Số lượng</label>
+                        <input
+                          type="number"
+                          value={partSelection.soLuong}
+                          onChange={(e) => setPartSelection({ ...partSelection, soLuong: parseInt(e.target.value) })}
+                          min="1"
+                          required
+                        />
+                      </div>
+                      <button type="submit" className="btn-small btn-primary" disabled={loading || !partSelection.linhKienId}>
+                        {loading ? '⏳ Đang thêm...' : '➕ Thêm linh kiện'}
                       </button>
                     </form>
                   </div>
@@ -1074,6 +1238,79 @@ export default function EmployeePage({ onLogout }) {
                   Đóng
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Hoàn tất sửa chữa */}
+      {showRepairModal && selectedTicket && (
+        <div className="modal-overlay" onClick={() => setShowRepairModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>✅ Hoàn tất sửa chữa</h2>
+              <button className="modal-close" onClick={() => setShowRepairModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div style={{ marginBottom: '16px', padding: '12px', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #bae6fd' }}>
+                <div style={{ fontSize: '0.9rem', color: '#0369a1', marginBottom: '4px' }}>Mã phiếu: <strong>{selectedTicket.maPhieu}</strong></div>
+                <div style={{ fontSize: '0.9rem', color: '#0369a1' }}>Sản phẩm: <strong>{selectedTicket.sanPhamId?.tenSP}</strong></div>
+              </div>
+
+              {/* Hiển thị tổng chi phí linh kiện */}
+              {selectedTicket.tongTienLinhKien > 0 && (
+                <div style={{ marginBottom: '16px', padding: '12px', background: '#fef3c7', borderRadius: '8px', border: '1px solid #fbbf24' }}>
+                  <div style={{ fontSize: '0.9rem', color: '#92400e', marginBottom: '8px', fontWeight: 600 }}>
+                    💰 Tổng chi phí linh kiện đã sử dụng:
+                  </div>
+                  <div style={{ fontSize: '1.2rem', color: '#b45309', fontWeight: 700 }}>
+                    {selectedTicket.tongTienLinhKien.toLocaleString('vi-VN')} VNĐ
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: '#78350f', marginTop: '4px' }}>
+                    ({selectedTicket.linhKienSuDung?.length || 0} linh kiện)
+                  </div>
+                </div>
+              )}
+
+              <form onSubmit={handleCompleteRepair}>
+                <div className="form-group">
+                  <label>Ghi chú hoàn tất *</label>
+                  <textarea
+                    value={completeForm.moTaXuLy}
+                    onChange={(e) => setCompleteForm({ ...completeForm, moTaXuLy: e.target.value })}
+                    placeholder="Mô tả công việc đã thực hiện..."
+                    rows="3"
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Chi phí phát sinh bổ sung (VNĐ)</label>
+                  <input
+                    type="number"
+                    value={completeForm.chiPhiPhatSinh}
+                    onChange={(e) => setCompleteForm({ ...completeForm, chiPhiPhatSinh: parseInt(e.target.value) || 0 })}
+                    placeholder="Nhập chi phí phát sinh bổ sung (nếu có)"
+                    min="0"
+                    defaultValue="0"
+                  />
+                  <small style={{ color: '#64748b', fontSize: '0.85rem' }}>
+                    * Số tiền này sẽ được CỘNG THÊM vào chi phí linh kiện
+                  </small>
+                </div>
+
+                <div className="modal-actions">
+                  <button type="button" className="btn-secondary" onClick={() => {
+                    setShowRepairModal(false)
+                    setCompleteForm({ moTaXuLy: '', chiPhiPhatSinh: 0 })
+                  }}>
+                    Hủy
+                  </button>
+                  <button type="submit" className="btn-primary" disabled={loading || !completeForm.moTaXuLy.trim()}>
+                    ✅ Hoàn tất
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>
