@@ -41,4 +41,7 @@ router.post('/rate/:ticketId', protect, customerController.submitRating);
 // Lấy khuyến nghị gia hạn bảo hành
 router.get('/recommendations/:customerId', protect, customerController.getWarrantyRecommendations);
 
+// Thanh toán phí bảo hành
+router.post('/payment/:ticketId', protect, customerController.processPayment);
+
 module.exports = router;

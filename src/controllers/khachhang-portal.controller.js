@@ -40,7 +40,7 @@ exports.getWarrantyInfo = async (req, res) => {
 exports.trackWarrantyTicket = async (req, res) => {
     try {
         const { ticketId } = req.params;
-        
+
         // Tìm theo maPhieu hoặc _id
         let ticket;
         if (ticketId.startsWith('BH')) {
@@ -70,6 +70,10 @@ exports.trackWarrantyTicket = async (req, res) => {
             moTaLoi: ticket.moTaLoi,
             loaiLoiDuDoan: ticket.loaiLoiDuDoan,
             lichSuTrangThai: ticket.lichSuTrangThai,
+            moTaTienDo: ticket.moTaTienDo,
+            chiPhiPhatSinh: ticket.chiPhiPhatSinh,
+            linhKienThayThe: ticket.linhKienThayThe,
+            trangThaiThanhToan: ticket.trangThaiThanhToan,
             // Include attachments so frontend can display files
             tepDinhKem: ticket.tepDinhKem || [],
             hinhAnhLoi: ticket.hinhAnhLoi || [],
@@ -171,7 +175,7 @@ exports.submitWarrantyRequest = async (req, res) => {
             khachHangId,
             moTaLoi,
             loaiLoiDuDoan,
-            trangThai: 'tiep_nhan',
+            trangThai: 'dang_cho',
             ngayTiepNhan: new Date(),
             hinhAnhLoi: attachmentImages.slice(0, maxAttachments),
             thongTinLienHe: {
@@ -183,7 +187,7 @@ exports.submitWarrantyRequest = async (req, res) => {
             },
             tepDinhKem: sanitizedAttachments,
             lichSuTrangThai: [{
-                trangThai: 'tiep_nhan',
+                trangThai: 'dang_cho',
                 thoiGian: new Date()
             }]
         });
@@ -268,8 +272,8 @@ exports.submitRating = async (req, res) => {
         ticket.qualityComments = comment || '';
         await ticket.save();
 
-        res.json({ 
-            message: 'Cảm ơn bạn đã gửi đánh giá!', 
+        res.json({
+            message: 'Cảm ơn bạn đã gửi đánh giá!',
             data: {
                 qualityRating: ticket.qualityRating,
                 qualityComments: ticket.qualityComments
@@ -277,6 +281,52 @@ exports.submitRating = async (req, res) => {
         });
     } catch (err) {
         console.error('❌ Error submitting rating:', err);
+        res.status(500).json({ message: 'Lỗi server', error: err.message });
+    }
+};
+
+// Xử lý thanh toán
+exports.processPayment = async (req, res) => {
+    try {
+        const { ticketId } = req.params;
+
+        const ticket = await PhieuBaoHanh.findById(ticketId);
+        if (!ticket) {
+            return res.status(404).json({ message: 'Không tìm thấy phiếu bảo hành' });
+        }
+
+        // Tính tổng chi phí
+        const totalCost = (ticket.chiPhiPhatSinh || 0) +
+            (ticket.linhKienThayThe || []).reduce((sum, item) => sum + (item.chiPhi || 0), 0);
+
+        if (totalCost <= 0) {
+            return res.status(400).json({ message: 'Phiếu bảo hành này không có chi phí cần thanh toán' });
+        }
+
+        if (ticket.trangThaiThanhToan === 'da_thanh_toan') {
+            return res.status(400).json({ message: 'Phiếu bảo hành này đã được thanh toán' });
+        }
+
+        // Cập nhật trạng thái thanh toán
+        ticket.trangThaiThanhToan = 'da_thanh_toan';
+
+        // Thêm vào lịch sử tiến độ
+        ticket.moTaTienDo.push({
+            noiDung: `Khách hàng đã thanh toán ${totalCost.toLocaleString('vi-VN')} VNĐ`,
+            thoiGian: new Date()
+        });
+
+        await ticket.save();
+
+        res.json({
+            message: 'Thanh toán thành công!',
+            data: {
+                trangThaiThanhToan: ticket.trangThaiThanhToan,
+                moTaTienDo: ticket.moTaTienDo
+            }
+        });
+    } catch (err) {
+        console.error('❌ Error processing payment:', err);
         res.status(500).json({ message: 'Lỗi server', error: err.message });
     }
 };

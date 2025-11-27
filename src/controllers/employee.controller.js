@@ -139,9 +139,9 @@ exports.getCompletedWork = async (req, res) => {
     try {
         const employeeId = req.user.id;
 
-        const tickets = await PhieuBaoHanh.find({ 
-            nhanVienTiepNhanId: employeeId, 
-            trangThai: 'hoan_tat' 
+        const tickets = await PhieuBaoHanh.find({
+            nhanVienTiepNhanId: employeeId,
+            trangThai: 'hoan_tat'
         })
             .populate('sanPhamId')
             .populate('khachHangId')
@@ -150,7 +150,7 @@ exports.getCompletedWork = async (req, res) => {
         const stats = {
             totalCompleted: tickets.length,
             totalPartsReplaced: tickets.reduce((sum, t) => sum + (t.linhKienThayThe?.length || 0), 0),
-            totalRepairCost: tickets.reduce((sum, t) => 
+            totalRepairCost: tickets.reduce((sum, t) =>
                 sum + (t.linhKienThayThe?.reduce((s, p) => s + (p.chiPhi || 0), 0) || 0) + (t.chiPhiPhatSinh || 0), 0
             )
         };

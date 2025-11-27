@@ -172,6 +172,17 @@ exports.assignEmployee = async (req, res) => {
         // Cập nhật nhân viên
         ticket.nhanVienTiepNhanId = nhanVienId;
 
+        // Nếu đang ở trạng thái 'dang_cho', chuyển sang 'tiep_nhan'
+        if (ticket.trangThai === 'dang_cho') {
+            ticket.trangThai = 'tiep_nhan';
+            ticket.lichSuTrangThai.push({
+                trangThai: 'tiep_nhan',
+                thoiGian: new Date(),
+                nhanVienId: req.user.id,
+                ghiChu: 'Đã tiếp nhận và gán nhân viên'
+            });
+        }
+
         // Thêm vào lịch sử
         ticket.lichSuTrangThai.push({
             trangThai: ticket.trangThai,
@@ -185,9 +196,9 @@ exports.assignEmployee = async (req, res) => {
         // Populate lại để trả về đầy đủ thông tin
         await ticket.populate('nhanVienTiepNhanId');
 
-        res.json({ 
-            message: `Đã gán phiếu cho nhân viên ${employee.hoTen}`, 
-            data: ticket 
+        res.json({
+            message: `Đã gán phiếu cho nhân viên ${employee.hoTen}`,
+            data: ticket
         });
     } catch (err) {
         res.status(500).json({ message: 'Lỗi server', error: err.message });
