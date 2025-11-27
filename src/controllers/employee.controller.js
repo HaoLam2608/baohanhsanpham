@@ -1,4 +1,7 @@
-const PhieuBaoHanh = require('../models/phieubaohanh');
+const PhieuBaoHanh = require('../models/phieubaohanh-new');
+const PhieuBaoHanhTimeline = require('../models/phieubaohanh-timeline');
+const PhieuBaoHanhCost = require('../models/phieubaohanh-cost');
+const PhieuBaoHanhAttachment = require('../models/phieubaohanh-attachment');
 const SanPham = require('../models/sanpham');
 const LinhKien = require('../models/linhkien');
 

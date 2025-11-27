@@ -22,17 +22,17 @@ app.use('/api/uploads', express.static('src/uploads'));
 // Routes
 app.use('/api/auth', require('./src/routes/auth.routes'));
 app.use('/api/sanpham', require('./src/routes/sanpham.routes'));
-app.use('/api/khachhang', require('./src/routes/khachhang.routes'));
-app.use('/api/phieubaohanh', require('./src/routes/phieubaohanh.routes'));
-app.use('/api/nhanvien', require('./src/routes/nhanvien.routes'));
-app.use('/api/linhkien', require('./src/routes/linhkien.routes'));
+// app.use('/api/khachhang', require('./src/routes/khachhang.routes'));
+// app.use('/api/phieubaohanh', require('./src/routes/phieubaohanh.routes'));
+// app.use('/api/nhanvien', require('./src/routes/nhanvien.routes'));
+// app.use('/api/linhkien', require('./src/routes/linhkien.routes'));
 
 // Role-based routes
-app.use('/api/customer', require('./src/routes/customer.routes'));
-app.use('/api/manager', require('./src/routes/manager.routes'));
-app.use('/api/employee', require('./src/routes/employee.routes'));
+// app.use('/api/customer', require('./src/routes/customer.routes'));
+// app.use('/api/manager', require('./src/routes/manager.routes'));
+// app.use('/api/employee', require('./src/routes/employee.routes'));
 // User profile routes (GET/PUT /api/user/profile)
-app.use('/api/user', require('./src/routes/user.routes'));
+// app.use('/api/user', require('./src/routes/user.routes'));
 
 app.use((err, req, res, next) => {
     console.error(err);

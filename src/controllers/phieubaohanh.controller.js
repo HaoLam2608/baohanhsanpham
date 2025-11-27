@@ -1,4 +1,7 @@
-const PhieuBaoHanh = require('../models/phieubaohanh');
+const PhieuBaoHanh = require('../models/phieubaohanh-new');
+const PhieuBaoHanhTimeline = require('../models/phieubaohanh-timeline');
+const PhieuBaoHanhCost = require('../models/phieubaohanh-cost');
+const PhieuBaoHanhAttachment = require('../models/phieubaohanh-attachment');
 const SanPham = require('../models/sanpham');
 
 // Create warranty ticket
@@ -10,6 +13,7 @@ exports.createPhieuBaoHanh = async (req, res) => {
         const existingPhieu = await PhieuBaoHanh.findOne({ maPhieu });
         if (existingPhieu) return res.status(400).json({ message: 'Mã phiếu đã tồn tại' });
 
+        // Create main ticket
         const newPhieu = new PhieuBaoHanh({
             maPhieu,
             sanPhamId,
@@ -17,20 +21,67 @@ exports.createPhieuBaoHanh = async (req, res) => {
             nhanVienTiepNhanId,
             moTaLoi,
             loaiLoiDuDoan,
-            trangThai: 'tiep_nhan',
-            hinhAnhLoi,
+            trangThai: 'tiep_nhan'
+        });
+
+        const savedPhieu = await newPhieu.save();
+
+        // Create timeline document
+        const timeline = new PhieuBaoHanhTimeline({
+            phieuBaoHanhId: savedPhieu._id,
             lichSuTrangThai: [{
                 trangThai: 'tiep_nhan',
                 thoiGian: new Date(),
                 nhanVienId: nhanVienTiepNhanId
             }]
         });
+        await timeline.save();
 
-        await newPhieu.save();
-        res.status(201).json({ message: 'Tạo phiếu bảo hành thành công', data: newPhieu });
+        // Create attachment document
+        const attachment = new PhieuBaoHanhAttachment({
+            phieuBaoHanhId: savedPhieu._id,
+            hinhAnhLoi: hinhAnhLoi || []
+        });
+        await attachment.save();
+
+        // Create cost document
+        const cost = new PhieuBaoHanhCost({
+            phieuBaoHanhId: savedPhieu._id
+        });
+        await cost.save();
+
+        res.status(201).json({ message: 'Tạo phiếu bảo hành thành công', data: savedPhieu });
     } catch (err) {
         res.status(500).json({ message: 'Lỗi server', error: err.message });
     }
+};
+
+// Helper function to get full ticket data
+const getFullTicketData = async (phieuId) => {
+    const phieu = await PhieuBaoHanh.findById(phieuId)
+        .populate('sanPhamId')
+        .populate('khachHangId')
+        .populate('nhanVienTiepNhanId');
+
+    if (!phieu) return null;
+
+    const timeline = await PhieuBaoHanhTimeline.findOne({ phieuBaoHanhId: phieuId });
+    const cost = await PhieuBaoHanhCost.findOne({ phieuBaoHanhId: phieuId });
+    const attachment = await PhieuBaoHanhAttachment.findOne({ phieuBaoHanhId: phieuId });
+
+    return {
+        ...phieu.toObject(),
+        lichSuTrangThai: timeline?.lichSuTrangThai || [],
+        moTaTienDo: timeline?.moTaTienDo || [],
+        linhKienThayThe: cost?.linhKienThayThe || [],
+        linhKienSuDung: cost?.linhKienSuDung || [],
+        chiPhiPhatSinh: cost?.chiPhiPhatSinh || 0,
+        tongTienLinhKien: cost?.tongTienLinhKien || 0,
+        tongTien: cost?.tongTien || 0,
+        hinhAnhLoi: attachment?.hinhAnhLoi || [],
+        tepDinhKem: attachment?.tepDinhKem || [],
+        hinhAnhSua: attachment?.hinhAnhSua || []
+    };
 };
 
 // Get all warranty tickets
@@ -41,7 +92,11 @@ exports.getAllPhieuBaoHanh = async (req, res) => {
             .populate('khachHangId')
             .populate('nhanVienTiepNhanId')
             .sort({ ngayTiepNhan: -1 });
-        res.json({ data: phieus });
+
+        // Get full data for each ticket
+        const fullData = await Promise.all(phieus.map(phieu => getFullTicketData(phieu._id)));
+
+        res.json({ data: fullData });
     } catch (err) {
         res.status(500).json({ message: 'Lỗi server', error: err.message });
     }
@@ -50,12 +105,9 @@ exports.getAllPhieuBaoHanh = async (req, res) => {
 // Get warranty ticket by ID
 exports.getPhieuBaoHanhById = async (req, res) => {
     try {
-        const phieu = await PhieuBaoHanh.findById(req.params.id)
-            .populate('sanPhamId')
-            .populate('khachHangId')
-            .populate('nhanVienTiepNhanId');
-        if (!phieu) return res.status(404).json({ message: 'Phiếu bảo hành không tồn tại' });
-        res.json({ data: phieu });
+        const fullData = await getFullTicketData(req.params.id);
+        if (!fullData) return res.status(404).json({ message: 'Phiếu bảo hành không tồn tại' });
+        res.json({ data: fullData });
     } catch (err) {
         res.status(500).json({ message: 'Lỗi server', error: err.message });
     }

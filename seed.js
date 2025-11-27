@@ -6,7 +6,10 @@ require('dotenv').config();
 const NhanVien = require('./src/models/nhanvien');
 const KhachHang = require('./src/models/khachhang');
 const SanPham = require('./src/models/sanpham');
-const PhieuBaoHanh = require('./src/models/phieubaohanh');
+const PhieuBaoHanh = require('./src/models/phieubaohanh-new');
+const PhieuBaoHanhTimeline = require('./src/models/phieubaohanh-timeline');
+const PhieuBaoHanhCost = require('./src/models/phieubaohanh-cost');
+const PhieuBaoHanhAttachment = require('./src/models/phieubaohanh-attachment');
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/bh_cau_long';
 
@@ -164,17 +167,18 @@ async function seedDatabase() {
     
     const phieuBaoHanhs = [];
     
-    // Tạo 15-20 phiếu bảo hành
+    // Tạo phiếu bảo hành với cấu trúc mới
     for (let i = 0; i < Math.min(15, createdSanPhams.length); i++) {
       const sanPham = createdSanPhams[i];
       const status = statuses[Math.floor(Math.random() * statuses.length)];
       const issue = issues[Math.floor(Math.random() * issues.length)];
       const nhanVien = nhanViens[Math.floor(Math.random() * (nhanViens.length - 1)) + 1]; // Không lấy admin
-      
+
       const ngayTiepNhan = new Date(2024, Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1);
       const maPhieu = `BH${String(i + 1).padStart(6, '0')}`; // BH000001, BH000002, ...
-      
-      const phieu = {
+
+      // Tạo phiếu chính
+      const phieu = new PhieuBaoHanh({
         maPhieu: maPhieu,
         sanPhamId: sanPham._id,
         khachHangId: sanPham.khachHangId,
@@ -182,48 +186,79 @@ async function seedDatabase() {
         moTaLoi: issue,
         loaiLoiDuDoan: Math.random() > 0.5 ? 'loi_nsx' : 'loi_su_dung',
         trangThai: status,
-        ngayTiepNhan: ngayTiepNhan,
-        hinhAnhLoi: [],
-        lichSuTrangThai: [
-          { trangThai: 'tiep_nhan', thoiGian: ngayTiepNhan, nhanVienId: nhanVien._id }
-        ]
-      };
-      
-      // Thêm lịch sử tùy theo trạng thái
-      if (status === 'dang_kiem_tra' || status === 'dang_sua' || status === 'hoan_tat') {
-        const ngayKiemTra = new Date(ngayTiepNhan.getTime() + 24 * 60 * 60 * 1000);
-        phieu.lichSuTrangThai.push({
-          trangThai: 'dang_kiem_tra',
-          thoiGian: ngayKiemTra,
-          nhanVienId: nhanVien._id
-        });
-      }
-      
-      if (status === 'dang_sua' || status === 'hoan_tat') {
-        const ngayBatDauSua = new Date(ngayTiepNhan.getTime() + 2 * 24 * 60 * 60 * 1000);
-        phieu.lichSuTrangThai.push({
-          trangThai: 'dang_sua',
-          thoiGian: ngayBatDauSua,
-          nhanVienId: nhanVien._id
-        });
-      }
-      
+        ngayTiepNhan: ngayTiepNhan
+      });
+
       if (status === 'hoan_tat') {
         const ngayHoanThanh = new Date(ngayTiepNhan.getTime() + 5 * 24 * 60 * 60 * 1000);
         phieu.ngayHoanTat = ngayHoanThanh;
         phieu.qualityRating = Math.floor(Math.random() * 2) + 4; // 4-5 sao
         phieu.qualityComments = 'Dịch vụ tốt, sửa chữa nhanh chóng.';
-        phieu.lichSuTrangThai.push({
+      }
+
+      const savedPhieu = await phieu.save();
+
+      // Tạo timeline
+      const lichSuTrangThai = [
+        { trangThai: 'tiep_nhan', thoiGian: ngayTiepNhan, nhanVienId: nhanVien._id }
+      ];
+
+      if (status === 'dang_kiem_tra' || status === 'dang_sua' || status === 'hoan_tat') {
+        const ngayKiemTra = new Date(ngayTiepNhan.getTime() + 24 * 60 * 60 * 1000);
+        lichSuTrangThai.push({
+          trangThai: 'dang_kiem_tra',
+          thoiGian: ngayKiemTra,
+          nhanVienId: nhanVien._id
+        });
+      }
+
+      if (status === 'dang_sua' || status === 'hoan_tat') {
+        const ngayBatDauSua = new Date(ngayTiepNhan.getTime() + 2 * 24 * 60 * 60 * 1000);
+        lichSuTrangThai.push({
+          trangThai: 'dang_sua',
+          thoiGian: ngayBatDauSua,
+          nhanVienId: nhanVien._id
+        });
+      }
+
+      if (status === 'hoan_tat') {
+        const ngayHoanThanh = new Date(ngayTiepNhan.getTime() + 5 * 24 * 60 * 60 * 1000);
+        lichSuTrangThai.push({
           trangThai: 'hoan_tat',
           thoiGian: ngayHoanThanh,
           nhanVienId: nhanVien._id
         });
       }
-      
-      phieuBaoHanhs.push(phieu);
+
+      const timeline = new PhieuBaoHanhTimeline({
+        phieuBaoHanhId: savedPhieu._id,
+        lichSuTrangThai: lichSuTrangThai,
+        moTaTienDo: []
+      });
+      await timeline.save();
+
+      // Tạo cost document
+      const cost = new PhieuBaoHanhCost({
+        phieuBaoHanhId: savedPhieu._id,
+        linhKienThayThe: [],
+        linhKienSuDung: [],
+        chiPhiPhatSinh: 0,
+        tongTienLinhKien: 0,
+        tongTien: 0
+      });
+      await cost.save();
+
+      // Tạo attachment document
+      const attachment = new PhieuBaoHanhAttachment({
+        phieuBaoHanhId: savedPhieu._id,
+        hinhAnhLoi: [],
+        tepDinhKem: [],
+        hinhAnhSua: []
+      });
+      await attachment.save();
+
+      phieuBaoHanhs.push(savedPhieu);
     }
-    
-    const createdPhieus = await PhieuBaoHanh.insertMany(phieuBaoHanhs);
     console.log(`✅ Đã tạo ${createdPhieus.length} phiếu bảo hành`);
 
     // ========== THỐNG KÊ ==========

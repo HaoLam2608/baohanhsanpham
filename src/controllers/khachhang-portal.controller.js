@@ -1,6 +1,9 @@
 const KhachHang = require('../models/khachhang');
 const SanPham = require('../models/sanpham');
-const PhieuBaoHanh = require('../models/phieubaohanh');
+const PhieuBaoHanh = require('../models/phieubaohanh-new');
+const PhieuBaoHanhTimeline = require('../models/phieubaohanh-timeline');
+const PhieuBaoHanhCost = require('../models/phieubaohanh-cost');
+const PhieuBaoHanhAttachment = require('../models/phieubaohanh-attachment');
 
 // Lấy thông tin bảo hành của khách hàng
 exports.getWarrantyInfo = async (req, res) => {
@@ -15,9 +18,30 @@ exports.getWarrantyInfo = async (req, res) => {
         const products = await SanPham.find({ khachHangId: customerId });
 
         // Lấy tất cả phiếu bảo hành
-        const tickets = await PhieuBaoHanh.find({ khachHangId: customerId })
+        const phieuList = await PhieuBaoHanh.find({ khachHangId: customerId })
             .populate('sanPhamId')
             .sort({ ngayTiepNhan: -1 });
+
+        // Get full data for each ticket
+        const tickets = await Promise.all(phieuList.map(async (phieu) => {
+            const timeline = await PhieuBaoHanhTimeline.findOne({ phieuBaoHanhId: phieu._id });
+            const cost = await PhieuBaoHanhCost.findOne({ phieuBaoHanhId: phieu._id });
+            const attachment = await PhieuBaoHanhAttachment.findOne({ phieuBaoHanhId: phieu._id });
+
+            return {
+                ...phieu.toObject(),
+                lichSuTrangThai: timeline?.lichSuTrangThai || [],
+                moTaTienDo: timeline?.moTaTienDo || [],
+                linhKienThayThe: cost?.linhKienThayThe || [],
+                linhKienSuDung: cost?.linhKienSuDung || [],
+                chiPhiPhatSinh: cost?.chiPhiPhatSinh || 0,
+                tongTienLinhKien: cost?.tongTienLinhKien || 0,
+                tongTien: cost?.tongTien || 0,
+                hinhAnhLoi: attachment?.hinhAnhLoi || [],
+                tepDinhKem: attachment?.tepDinhKem || [],
+                hinhAnhSua: attachment?.hinhAnhSua || []
+            };
+        }));
 
         res.json({
             customer,
