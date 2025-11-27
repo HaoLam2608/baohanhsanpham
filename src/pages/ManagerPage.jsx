@@ -134,6 +134,45 @@ export default function ManagerPage({ onLogout }) {
     }
   }
 
+  // Helper: normalize used/replaced parts arrays and compute totals defensively
+  const getPartsAndTotals = (ticket) => {
+    if (!ticket) return { usedParts: [], replacedParts: [], totals: { used: 0, replaced: 0, chiPhiPhatSinh: 0, estimated: 0, tongTien: 0 } }
+
+    // Possible places parts might be stored on the ticket
+    const used = ticket.linhKienSuDung || ticket.linhKienDaSuDung || (ticket.cost && ticket.cost.linhKienSuDung) || []
+    const replaced = ticket.linhKienThayThe || ticket.linhKienThayThe || (ticket.cost && ticket.cost.linhKienThayThe) || []
+
+    const usedArr = Array.isArray(used) ? used : []
+    const replacedArr = Array.isArray(replaced) ? replaced : []
+
+    const sumLine = (it) => {
+      const qty = Number(it?.soLuong ?? it?.quantity ?? it?.qty ?? 1) || 0
+      const unit = Number(it?.donGia ?? it?.gia ?? it?.price ?? it?.chiPhi ?? 0) || 0
+      const lineTotal = Number(it?.thanhTien ?? it?.thanh_tien ?? (qty * unit)) || (qty * unit)
+      return { qty, unit, lineTotal }
+    }
+
+    const totalUsed = usedArr.reduce((s, it) => s + (sumLine(it).lineTotal || 0), 0)
+    const totalReplaced = replacedArr.reduce((s, it) => s + (sumLine(it).lineTotal || 0), 0)
+
+    const chiPhiPhatSinh = Number(ticket.chiPhiPhatSinh ?? ticket.phiPhatSinh ?? ticket.extraCost ?? ticket.extra ?? 0) || 0
+
+    const estimated = totalUsed + totalReplaced + chiPhiPhatSinh
+    const tongTien = Number(ticket.tongTien ?? ticket.total ?? 0) || 0
+
+    return {
+      usedParts: usedArr,
+      replacedParts: replacedArr,
+      totals: {
+        used: totalUsed,
+        replaced: totalReplaced,
+        chiPhiPhatSinh,
+        estimated,
+        tongTien,
+      }
+    }
+  }
+
   const loadInventory = async () => {
     try {
       setLoading(true)
@@ -575,6 +614,10 @@ export default function ManagerPage({ onLogout }) {
     { id: 'inventory', label: 'Kho linh kiện', icon: <Box className="w-5 h-5" /> },
     { id: 'settings', label: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
   ]
+
+  // Prepare partsData when a ticket detail is selected (avoid inline IIFE in JSX)
+  const partsData = selectedTicketDetail ? getPartsAndTotals(selectedTicketDetail) : { usedParts: [], replacedParts: [], totals: { used:0,replaced:0,chiPhiPhatSinh:0,estimated:0,tongTien:0 } }
+  const { usedParts, replacedParts, totals } = partsData
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -1902,6 +1945,109 @@ export default function ManagerPage({ onLogout }) {
                         <p className="text-gray-500 text-sm italic">Chưa có cập nhật nào</p>
                       )}
                     </div>
+                  </div>
+
+                  {/* Replaced parts & Totals */}
+                  <div>
+                    <h4 className="font-bold text-gray-800 mb-3">Linh kiện thay thế & Tổng chi phí</h4>
+                    <div className="bg-white p-4 rounded-xl border border-gray-100">
+                      
+                            <div className="text-sm text-gray-700 mb-3">
+                              {/* Used parts table */}
+                              <div className="mb-3">
+                                <div className="text-xs text-gray-500 mb-1">Linh kiện đã sử dụng</div>
+                                {usedParts.length > 0 ? (
+                                  <div className="overflow-x-auto mb-2">
+                                    <table className="w-full text-sm">
+                                      <thead>
+                                        <tr className="text-left text-gray-500 text-xs border-b border-gray-100">
+                                          <th className="p-2">Tên linh kiện</th>
+                                          <th className="p-2">Số lượng</th>
+                                          <th className="p-2 text-right">Đơn giá</th>
+                                          <th className="p-2 text-right">Thành tiền</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-gray-100">
+                                        {usedParts.map((lt, idx) => {
+                                          const qty = Number(lt?.soLuong ?? lt?.quantity ?? lt?.qty ?? 1) || 0
+                                          const unit = Number(lt?.donGia ?? lt?.gia ?? lt?.price ?? lt?.chiPhi ?? 0) || 0
+                                          const line = Number(lt?.thanhTien ?? lt?.thanh_tien ?? (qty * unit)) || (qty * unit)
+                                          return (
+                                            <tr key={idx}>
+                                              <td className="p-2">{lt.tenLinhKien || lt.maLinhKien || 'Linh kiện'}</td>
+                                              <td className="p-2">{qty}</td>
+                                              <td className="p-2 text-right">{unit.toLocaleString('vi-VN')} đ</td>
+                                              <td className="p-2 text-right">{line.toLocaleString('vi-VN')} đ</td>
+                                            </tr>
+                                          )
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                ) : (
+                                  <div className="text-gray-500">Không có linh kiện đã sử dụng</div>
+                                )}
+                              </div>
+
+                              {/* Replaced parts table (overview) */}
+                              <div>
+                                <div className="text-xs text-gray-500 mb-1">Linh kiện thay thế (tổng quan)</div>
+                                {replacedParts.length > 0 ? (
+                                  <div className="overflow-x-auto mb-2">
+                                    <table className="w-full text-sm">
+                                      <thead>
+                                        <tr className="text-left text-gray-500 text-xs border-b border-gray-100">
+                                          <th className="p-2">Tên linh kiện</th>
+                                          <th className="p-2">Số lượng</th>
+                                          <th className="p-2 text-right">Đơn giá</th>
+                                          <th className="p-2 text-right">Thành tiền</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-gray-100">
+                                        {replacedParts.map((lt, idx) => {
+                                          const qty = Number(lt?.soLuong ?? lt?.quantity ?? lt?.qty ?? 1) || 0
+                                          const unit = Number(lt?.donGia ?? lt?.gia ?? lt?.price ?? lt?.chiPhi ?? 0) || 0
+                                          const line = Number(lt?.thanhTien ?? lt?.thanh_tien ?? (qty * unit)) || (qty * unit)
+                                          return (
+                                            <tr key={idx}>
+                                              <td className="p-2">{lt.tenLinhKien || lt.maLinhKien || 'Linh kiện'}</td>
+                                              <td className="p-2">{qty}</td>
+                                              <td className="p-2 text-right">{unit.toLocaleString('vi-VN')} đ</td>
+                                              <td className="p-2 text-right">{line.toLocaleString('vi-VN')} đ</td>
+                                            </tr>
+                                          )
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                ) : (
+                                  <div className="text-gray-500">Không có linh kiện thay thế</div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="pt-2 border-t border-gray-100 text-sm">
+                              <div className="flex justify-between mb-1">
+                                <span className="text-gray-500">Tổng linh kiện đã sử dụng:</span>
+                                <span className="font-mono">{Number(totals.used).toLocaleString('vi-VN')} đ</span>
+                              </div>
+                              <div className="flex justify-between mb-1">
+                                <span className="text-gray-500">Tổng linh kiện thay thế (tổng quan):</span>
+                                <span className="font-mono">{Number(totals.replaced).toLocaleString('vi-VN')} đ</span>
+                              </div>
+                              <div className="flex justify-between mb-1">
+                                <span className="text-gray-500">Chi phí phát sinh:</span>
+                                <span className="font-mono">{Number(totals.chiPhiPhatSinh).toLocaleString('vi-VN')} đ</span>
+                              </div>
+                              <div className="flex justify-between font-bold text-lg mt-2">
+                                <span>Tổng (ước tính):</span>
+                                <span className="font-mono text-red-600">{Number(totals.estimated).toLocaleString('vi-VN')} đ</span>
+                              </div>
+                              {totals.tongTien ? (
+                                <div className="mt-2 text-sm text-green-600">Tổng sau khi hoàn tất: <span className="font-mono">{Number(totals.tongTien).toLocaleString('vi-VN')} đ</span></div>
+                              ) : null}
+                                </div>
+                              </div>
                   </div>
 
                   {/* Review Section */}

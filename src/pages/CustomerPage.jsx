@@ -172,18 +172,15 @@ export default function CustomerPage({ user, onLogout }) {
       setRatingForm({ ticketId: '', rating: 0, comment: '' })
       fetchData() // Reload tickets to update list
 
-      // If the user is currently viewing the tracked ticket, update trackingResult so rating appears immediately
+      // If the user is currently viewing the tracked ticket, re-fetch it from server so the UI shows saved rating
       try {
-        const newRating = res?.data || null
-        if (trackingResult && newRating) {
-          const trackedId = trackingResult._id || trackingResult.maPhieu
-          // If the rated ticket matches the currently tracked ticket by id or maPhieu, update trackingResult
-          if (trackingResult._id === ratingForm.ticketId || String(trackingResult._id) === String(ratingForm.ticketId) || trackingResult.maPhieu === ratingForm.ticketId) {
-            setTrackingResult(prev => ({ ...prev, qualityRating: newRating.qualityRating ?? ratingForm.rating, qualityComments: newRating.qualityComments ?? ratingForm.comment }))
-          }
+        if (trackingResult) {
+          // use ticket _id if available (ratingForm.ticketId is _id), track endpoint accepts id or maPhieu
+          const refreshed = await customerAPI.trackTicket(ratingForm.ticketId)
+          if (refreshed) setTrackingResult(refreshed)
         }
       } catch (e) {
-        // ignore local update errors
+        // ignore refresh errors
       }
     } catch (err) {
       setError(err.message || 'Gửi đánh giá thất bại')
@@ -787,7 +784,7 @@ export default function CustomerPage({ user, onLogout }) {
                             </span>
 
                             {/* Show CTA when completed but not yet rated */}
-                            {ticket.trangThai === 'hoan_tat' && !(ticket.danhGia || ticket.rating || ticket.isRated || ticket.userRated) && (
+                            {ticket.trangThai === 'hoan_tat' && !(ticket.qualityRating || ticket.qualityComments || ticket.danhGia || ticket.rating || ticket.isRated || ticket.userRated) && (
                               <button
                                 onClick={() => {
                                   setRatingForm({ ticketId: ticket._id, rating: 5, comment: '' })
@@ -936,17 +933,17 @@ export default function CustomerPage({ user, onLogout }) {
                                   <div className="flex items-center justify-between mb-2">
                                     <div className="flex items-center gap-3">
                                       <div className="font-semibold text-gray-800">Đánh giá của bạn</div>
-                                      {score ? (
-                                        <div className="flex items-center gap-1">
-                                          {[1,2,3,4,5].map(i => (
-                                            <Star key={i} className={`w-4 h-4 ${i <= score ? 'text-yellow-400' : 'text-gray-200'}`} />
-                                          ))}
-                                        </div>
-                                      ) : null}
+                                              {score ? (
+                                                <div className="flex items-center gap-1">
+                                                  {[1,2,3,4,5].map(i => (
+                                                    <Star key={i} className={`w-4 h-4 ${i <= score ? 'fill-yellow-400 text-yellow-400' : 'text-gray-200'}`} />
+                                                  ))}
+                                                </div>
+                                              ) : null}
                                     </div>
-                                    {createdAt ? <div className="text-xs text-gray-400">{new Date(createdAt).toLocaleString('vi-VN')}</div> : null}
+                                            {createdAt ? <div className="text-xs text-gray-400">{new Date(createdAt).toLocaleString('vi-VN')}</div> : null}
                                   </div>
-                                  {comment ? <div className="text-gray-700 text-sm">{comment}</div> : <div className="text-sm text-gray-500">Không có nhận xét.</div>}
+                                          {comment ? <div className="text-gray-700 text-sm">{comment}</div> : <div className="text-sm text-gray-500">{trackingResult.qualityComments ? trackingResult.qualityComments : 'Không có nhận xét.'}</div>}
                                 </div>
                               )
                             })()}
