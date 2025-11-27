@@ -917,6 +917,61 @@ export default function EmployeePage({ onLogout }) {
                       </div>
                     </div>
                   )}
+
+                  {/* Parts used / Replace parts */}
+                  <div className="bg-white border border-gray-200 rounded-xl p-4">
+                    <h4 className="font-bold text-gray-800 mb-3">Linh kiện đã sử dụng / Thay thế</h4>
+                    <div className="space-y-3 text-sm text-gray-700">
+                      {selectedTicket.linhKienSuDung && selectedTicket.linhKienSuDung.length > 0 ? (
+                        <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
+                          {selectedTicket.linhKienSuDung.map((it, i) => (
+                            <div key={i} className="flex items-center justify-between gap-4 p-2 rounded-lg border border-gray-100">
+                              <div>
+                                <div className="font-medium">{it.tenLinhKien}</div>
+                                <div className="text-xs text-gray-500">Số lượng: {it.soLuong} · Đơn giá: {it.donGia?.toLocaleString?.('vi-VN') || it.donGia} đ</div>
+                              </div>
+                              <div className="text-sm font-mono text-gray-700">{(it.thanhTien || (it.soLuong * it.donGia))?.toLocaleString?.('vi-VN')} đ</div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-gray-500 italic">Chưa có linh kiện nào được thêm</div>
+                      )}
+
+                      <form onSubmit={handleAddPart} className="mt-3 grid grid-cols-3 gap-2 items-end">
+                        <div className="col-span-2">
+                          <label className="block text-xs text-gray-600 mb-1">Chọn linh kiện</label>
+                          <select
+                            value={partSelection.linhKienId}
+                            onChange={(e) => setPartSelection({ ...partSelection, linhKienId: e.target.value })}
+                            className="w-full p-2 rounded-lg border border-gray-200 outline-none"
+                          >
+                            <option value="">-- Chọn linh kiện --</option>
+                            {inventory.map(inv => (
+                              <option key={inv._id} value={inv._id}>{inv.tenLinhKien} (Tồn: {inv.soLuongTon})</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">Số lượng</label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={partSelection.soLuong}
+                            onChange={(e) => setPartSelection({ ...partSelection, soLuong: parseInt(e.target.value || '1') })}
+                            className="w-full p-2 rounded-lg border border-gray-200 outline-none"
+                          />
+                        </div>
+
+                        <div className="col-span-3">
+                          <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded-lg mt-2 disabled:opacity-50" disabled={!partSelection.linhKienId || partSelection.soLuong < 1 || loading}>
+                            {loading ? 'Đang thêm...' : 'Thêm linh kiện vào phiếu'}
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Right Column: History & Actions */}
@@ -936,6 +991,30 @@ export default function EmployeePage({ onLogout }) {
                       {(!selectedTicket.moTaTienDo || selectedTicket.moTaTienDo.length === 0) && (
                         <p className="text-gray-500 text-sm italic">Chưa có cập nhật nào</p>
                       )}
+                    </div>
+                  </div>
+
+                  {/* Totals */}
+                  <div className="bg-white border border-gray-200 rounded-xl p-4">
+                    <h4 className="font-bold text-gray-800 mb-3">Tổng chi phí</h4>
+                    <div className="text-sm text-gray-700 space-y-2">
+                      {(() => {
+                        const parts = selectedTicket.linhKienSuDung || []
+                        const partsTotal = parts.reduce((s, it) => s + ((it.thanhTien != null) ? it.thanhTien : ((it.donGia || 0) * (it.soLuong || 1))), 0)
+                        const extra = selectedTicket.chiPhiPhatSinh || 0
+                        const computedTotal = partsTotal + extra
+                        return (
+                          <div>
+                            <div className="flex justify-between"><span className="text-gray-500">Tổng linh kiện:</span><span className="font-mono">{partsTotal.toLocaleString('vi-VN')} đ</span></div>
+                            <div className="flex justify-between"><span className="text-gray-500">Chi phí phát sinh:</span><span className="font-mono">{extra.toLocaleString('vi-VN')} đ</span></div>
+                            <hr className="my-2" />
+                            <div className="flex justify-between font-bold text-lg"><span>Tổng dự kiến:</span><span className="font-mono text-right">{computedTotal.toLocaleString('vi-VN')} đ</span></div>
+                            {selectedTicket.tongTien ? (
+                              <div className="mt-2 text-sm text-green-600">Tổng sau khi hoàn tất: <span className="font-mono">{(selectedTicket.tongTien || 0).toLocaleString('vi-VN')} đ</span></div>
+                            ) : null}
+                          </div>
+                        )
+                      })()}
                     </div>
                   </div>
 

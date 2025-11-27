@@ -347,8 +347,15 @@ export default function ManagerPage({ onLogout }) {
     try {
       setLoading(true)
       setError('')
-      await managerAPI.assignEmployee(selectedTicket._id, nhanVienId)
+      const res = await managerAPI.assignEmployee(selectedTicket._id, nhanVienId)
       setSuccess('✅ Đã gán nhân viên thành công!')
+      // Nếu modal chi tiết đang mở cho cùng phiếu, cập nhật thông tin hiển thị
+      if (selectedTicketDetail && res && (res.data || res.ticket)) {
+        const updated = res.data || res.ticket
+        if (updated._id === selectedTicketDetail._id) {
+          setSelectedTicketDetail(updated)
+        }
+      }
       setShowAssignModal(false)
       setSelectedTicket(null)
       loadTickets()
@@ -1811,6 +1818,25 @@ export default function ManagerPage({ onLogout }) {
                     </div>
                   </div>
 
+                  {/* Thông tin khách hàng */}
+                  <div className="bg-white p-4 rounded-xl border border-gray-100">
+                    <h4 className="font-bold text-gray-800 mb-3">Thông tin khách hàng</h4>
+                    <div className="space-y-2 text-sm text-gray-700">
+                      <div className="flex items-center gap-3">
+                        <Phone className="w-4 h-4 text-gray-400" />
+                        <span>{selectedTicketDetail.khachHangId?.soDienThoai || 'Chưa có'}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Mail className="w-4 h-4 text-gray-400" />
+                        <span>{selectedTicketDetail.khachHangId?.email || 'Chưa có'}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <MapPin className="w-4 h-4 text-gray-400" />
+                        <span>{selectedTicketDetail.khachHangId?.diaChi || 'Chưa có'}</span>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
                     <h4 className="font-bold text-blue-800 mb-2">Mô tả lỗi</h4>
                     <p className="text-sm text-blue-900">{selectedTicketDetail.moTaLoi}</p>
@@ -1818,6 +1844,48 @@ export default function ManagerPage({ onLogout }) {
                 </div>
 
                 <div className="space-y-6">
+                  {/* Người nhận sửa chữa / Nhân viên được gán */}
+                  <div className="bg-white p-4 rounded-xl border border-gray-100">
+                    <h4 className="font-bold text-gray-800 mb-3">Người nhận sửa chữa</h4>
+                    <div className="space-y-2 text-sm text-gray-700">
+                      {selectedTicketDetail.nhanVienTiepNhanId ? (
+                        <>
+                          <div className="flex items-center gap-3">
+                            <User className="w-4 h-4 text-gray-400" />
+                            <span className="font-medium">{selectedTicketDetail.nhanVienTiepNhanId.hoTen}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <Mail className="w-4 h-4 text-gray-400" />
+                            <span>{selectedTicketDetail.nhanVienTiepNhanId.email || 'Chưa có'}</span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-3">
+                            <User className="w-4 h-4 text-gray-400" />
+                            <span>{selectedTicketDetail.thongTinLienHe?.hoTen || 'Chưa có'}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <Phone className="w-4 h-4 text-gray-400" />
+                            <span>{selectedTicketDetail.thongTinLienHe?.soDienThoai || 'Chưa có'}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <Mail className="w-4 h-4 text-gray-400" />
+                            <span>{selectedTicketDetail.thongTinLienHe?.email || 'Chưa có'}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-gray-500 text-xs">Mã đơn:</span>
+                            <span className="font-mono text-sm">{selectedTicketDetail.thongTinLienHe?.maDonHang || '-'}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-gray-500 text-xs">Số Serial:</span>
+                            <span className="font-mono text-sm">{selectedTicketDetail.thongTinLienHe?.soSerial || '-'}</span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
                   <div>
                     <h4 className="font-bold text-gray-800 mb-3">Tiến độ xử lý</h4>
                     <div className="space-y-4">

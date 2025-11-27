@@ -123,10 +123,22 @@ export default function CustomerPage({ user, onLogout }) {
 
     try {
       const formData = new FormData()
+      // Include customer id so backend knows which customer is submitting
+      if (user?._id || user?.id) formData.append('khachHangId', user._id || user.id)
       if (warrantyForm.maDonHang) formData.append('maDonHang', warrantyForm.maDonHang)
       if (warrantyForm.soSerial) formData.append('soSerial', warrantyForm.soSerial)
       if (warrantyForm.sanPhamId) formData.append('sanPhamId', warrantyForm.sanPhamId)
       formData.append('moTaLoi', warrantyForm.moTaLoi)
+
+      // Include contact info (thongTinLienHe) so backend validation can read hoTen/soDienThoai
+      const contactInfo = {
+        hoTen: user?.hoTen || '',
+        soDienThoai: user?.soDienThoai || '',
+        email: user?.email || '',
+        maDonHang: warrantyForm.maDonHang || '',
+        soSerial: warrantyForm.soSerial || ''
+      }
+      formData.append('thongTinLienHe', JSON.stringify(contactInfo))
 
       warrantyForm.attachments.forEach(file => {
         formData.append('attachments', file)
@@ -138,7 +150,7 @@ export default function CustomerPage({ user, onLogout }) {
       fetchData()
       setActiveTab('myTickets')
     } catch (err) {
-      setError(err.response?.data?.message || 'Lỗi khi gửi yêu cầu')
+      setError(err.message || err.response?.data?.message || 'Lỗi khi gửi yêu cầu')
     } finally {
       setLoading(false)
     }
@@ -150,13 +162,29 @@ export default function CustomerPage({ user, onLogout }) {
     setError('')
     setSuccess('')
     try {
-      await customerAPI.submitRating(ratingForm.ticketId, {
+      const res = await customerAPI.submitRating(ratingForm.ticketId, {
         rating: ratingForm.rating,
         comment: ratingForm.comment
       })
+
       setSuccess('Cảm ơn bạn đã đánh giá dịch vụ!')
+      // Update local rating form + tickets
       setRatingForm({ ticketId: '', rating: 0, comment: '' })
-      fetchData() // Reload tickets to update status
+      fetchData() // Reload tickets to update list
+
+      // If the user is currently viewing the tracked ticket, update trackingResult so rating appears immediately
+      try {
+        const newRating = res?.data || null
+        if (trackingResult && newRating) {
+          const trackedId = trackingResult._id || trackingResult.maPhieu
+          // If the rated ticket matches the currently tracked ticket by id or maPhieu, update trackingResult
+          if (trackingResult._id === ratingForm.ticketId || String(trackingResult._id) === String(ratingForm.ticketId) || trackingResult.maPhieu === ratingForm.ticketId) {
+            setTrackingResult(prev => ({ ...prev, qualityRating: newRating.qualityRating ?? ratingForm.rating, qualityComments: newRating.qualityComments ?? ratingForm.comment }))
+          }
+        }
+      } catch (e) {
+        // ignore local update errors
+      }
     } catch (err) {
       setError(err.message || 'Gửi đánh giá thất bại')
     } finally {
@@ -757,6 +785,20 @@ export default function CustomerPage({ user, onLogout }) {
                               {getStatusBadge(ticket.trangThai).icon}
                               {getStatusBadge(ticket.trangThai).text}
                             </span>
+
+                            {/* Show CTA when completed but not yet rated */}
+                            {ticket.trangThai === 'hoan_tat' && !(ticket.danhGia || ticket.rating || ticket.isRated || ticket.userRated) && (
+                              <button
+                                onClick={() => {
+                                  setRatingForm({ ticketId: ticket._id, rating: 5, comment: '' })
+                                  setActiveTab('rate')
+                                }}
+                                className="ml-2 inline-flex items-center gap-2 px-3 py-1 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700"
+                              >
+                                Đánh giá ngay
+                              </button>
+                            )}
+                            {/* if already rated, show nothing (no CTA) */}
                           </div>
                         </div>
 
@@ -869,76 +911,220 @@ export default function CustomerPage({ user, onLogout }) {
                                 </p>
                               </div>
                             )}
+
+                            {/* Rating display (if exists) */}
+                            {(() => {
+                              const r = trackingResult.qualityRating || trackingResult.danhGia || trackingResult.rating || trackingResult.ratingInfo || trackingResult.ratingData
+                              if (!r) return null
+                              // normalize
+                              let score = null
+                              let comment = null
+                              let createdAt = null
+                              if (typeof r === 'number') score = r
+                              if (typeof r === 'string') {
+                                // maybe comment only
+                                comment = r
+                              }
+                              if (typeof r === 'object') {
+                                score = r.rating || r.score || r.stars || r.point || null
+                                comment = r.comment || r.noiDung || r.memo || r.note || r.text || null
+                                createdAt = r.createdAt || r.thoiGian || null
+                              }
+
+                              return (
+                                <div className="mt-4 bg-white p-4 rounded-lg border border-gray-100">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-3">
+                                      <div className="font-semibold text-gray-800">Đánh giá của bạn</div>
+                                      {score ? (
+                                        <div className="flex items-center gap-1">
+                                          {[1,2,3,4,5].map(i => (
+                                            <Star key={i} className={`w-4 h-4 ${i <= score ? 'text-yellow-400' : 'text-gray-200'}`} />
+                                          ))}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                    {createdAt ? <div className="text-xs text-gray-400">{new Date(createdAt).toLocaleString('vi-VN')}</div> : null}
+                                  </div>
+                                  {comment ? <div className="text-gray-700 text-sm">{comment}</div> : <div className="text-sm text-gray-500">Không có nhận xét.</div>}
+                                </div>
+                              )
+                            })()}
                           </div>
                         </div>
                       </div>
 
-                      {/* Payment Section */}
-                      {(() => {
-                        const costs = []
-                        if (trackingResult.chiPhiPhatSinh) {
-                          costs.push({ moTaChiPhi: 'Chi phí phát sinh', soTien: trackingResult.chiPhiPhatSinh })
-                        }
-                        if (trackingResult.linhKienThayThe && Array.isArray(trackingResult.linhKienThayThe)) {
-                          trackingResult.linhKienThayThe.forEach(item => {
-                            costs.push({ moTaChiPhi: item.tenLinhKien || 'Linh kiện', soTien: item.chiPhi || 0 })
-                          })
-                        }
+                      {/* History & Parts Section */}
+                      <div className="grid md:grid-cols-2 gap-6">
+                        <div className="p-6 bg-white rounded-xl border border-gray-100">
+                          <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                            <History className="w-5 h-5 text-indigo-600" />
+                            Tiến độ chi tiết
+                          </h3>
+                          <div className="space-y-3 text-sm">
+                            {Array.isArray(trackingResult.moTaTienDo) && trackingResult.moTaTienDo.length > 0 ? (
+                              <div className="space-y-2">
+                                {trackingResult.moTaTienDo.slice().reverse().map((m, i) => (
+                                  <div key={i} className="text-sm p-2 bg-gray-50 rounded border border-gray-100">
+                                    <div className="text-gray-800">{m.noiDung}</div>
+                                    <div className="text-xs text-gray-400 mt-1">{new Date(m.thoiGian).toLocaleString('vi-VN')}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-gray-500">Chưa có cập nhật tiến độ</p>
+                            )}
+                          </div>
+                        </div>
 
-                        if (costs.length === 0) return null
+                        <div className="p-6 bg-white rounded-xl border border-gray-100">
+                          <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                            <Tag className="w-5 h-5 text-blue-600" />
+                            Linh kiện đã sử dụng / Thay thế
+                          </h3>
 
-                        return (
-                          <div className="p-6 bg-yellow-50 rounded-xl border border-yellow-100 payment-info">
-                            <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-                              <span className="text-xl">💰</span>
-                              Chi phí sửa chữa
-                            </h3>
-                            <div className="bg-white rounded-lg border border-yellow-200 overflow-hidden mb-4">
-                              <table className="w-full text-sm">
-                                <thead className="bg-yellow-50/50">
-                                  <tr>
-                                    <th className="p-3 text-left">Hạng mục</th>
-                                    <th className="p-3 text-right">Chi phí</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                  {costs.map((cost, idx) => (
-                                    <tr key={idx}>
-                                      <td className="p-3">{cost.moTaChiPhi}</td>
-                                      <td className="p-3 text-right font-mono">
-                                        {cost.soTien?.toLocaleString('vi-VN')} đ
-                                      </td>
-                                    </tr>
-                                  ))}
-                                  <tr className="font-bold bg-gray-50">
-                                    <td className="p-3">Tổng cộng</td>
-                                    <td className="p-3 text-right text-red-600">
-                                      {costs.reduce((sum, c) => sum + (c.soTien || 0), 0).toLocaleString('vi-VN')} đ
-                                    </td>
-                                  </tr>
-                                </tbody>
-                              </table>
+                          <div className="space-y-4 text-sm">
+                            <div>
+                              <div className="text-gray-500 mb-2">Linh kiện đã sử dụng</div>
+                              {Array.isArray(trackingResult.linhKienSuDung) && trackingResult.linhKienSuDung.length > 0 ? (
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-sm">
+                                    <thead>
+                                      <tr className="text-left text-gray-500 text-xs border-b border-gray-100">
+                                        <th className="p-2">Tên linh kiện</th>
+                                        <th className="p-2">Số lượng</th>
+                                        <th className="p-2 text-right">Đơn giá</th>
+                                        <th className="p-2 text-right">Thành tiền</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                      {trackingResult.linhKienSuDung.map((lk, i) => (
+                                        <tr key={i}>
+                                          <td className="p-2">{lk.tenLinhKien || lk.linhKienId?.tenLinhKien || '—'}</td>
+                                          <td className="p-2">{lk.soLuong || 1}</td>
+                                          <td className="p-2 text-right">{(lk.donGia || 0).toLocaleString('vi-VN')} đ</td>
+                                          <td className="p-2 text-right">{(lk.thanhTien || ((lk.donGia || 0) * (lk.soLuong || 1))).toLocaleString('vi-VN')} đ</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ) : (
+                                <p className="text-gray-500">Chưa có linh kiện sử dụng</p>
+                              )}
                             </div>
 
-                            <div className="flex justify-end items-center gap-4">
-                              <div className="text-sm">
-                                <span className="text-gray-500">Trạng thái: </span>
-                                <span className={`font-bold ${trackingResult.trangThaiThanhToan === 'da_thanh_toan' ? 'text-green-600' : 'text-red-500'}`}>
-                                  {trackingResult.trangThaiThanhToan === 'da_thanh_toan' ? 'Đã thanh toán' : 'Chưa thanh toán'}
-                                </span>
-                              </div>
-                              {trackingResult.trangThaiThanhToan !== 'da_thanh_toan' && (
-                                <button
-                                  onClick={() => handlePayment(trackingResult._id || trackingResult.maPhieu)}
-                                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium shadow-sm transition-colors"
-                                >
-                                  Thanh toán ngay
-                                </button>
+                            <div>
+                              <div className="text-gray-500 mb-2">Linh kiện thay thế (tổng quan)</div>
+                              {Array.isArray(trackingResult.linhKienThayThe) && trackingResult.linhKienThayThe.length > 0 ? (
+                                <ul className="space-y-2">
+                                  {trackingResult.linhKienThayThe.map((lt, j) => (
+                                    <li key={j} className="p-2 bg-gray-50 rounded border border-gray-100 text-sm">
+                                      <div className="font-medium">{lt.tenLinhKien || lt.maLinhKien || 'Linh kiện'}</div>
+                                      <div className="text-xs text-gray-500">Chi phí: {(lt.chiPhi || 0).toLocaleString('vi-VN')} đ</div>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="text-gray-500">Không có linh kiện thay thế</p>
                               )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Totals Summary */}
+                      {(() => {
+                        const usedParts = Array.isArray(trackingResult.linhKienSuDung) ? trackingResult.linhKienSuDung : []
+                        const usedTotal = usedParts.reduce((s, it) => s + ((it.thanhTien != null) ? it.thanhTien : ((it.donGia || 0) * (it.soLuong || 1))), 0)
+                        const replaced = Array.isArray(trackingResult.linhKienThayThe) ? trackingResult.linhKienThayThe : []
+                        const replacedTotal = replaced.reduce((s, it) => s + (it.chiPhi || 0), 0)
+                        const extraCost = trackingResult.chiPhiPhatSinh || 0
+                        const estimatedTotal = usedTotal + replacedTotal + extraCost
+
+                        return (
+                          <div className="p-6 bg-white rounded-xl border border-gray-100 mb-4">
+                            <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">Tổng chi phí</h3>
+                            <div className="text-sm text-gray-700">
+                              <div className="flex justify-between"><span className="text-gray-500">Linh kiện (đã sử dụng):</span><span className="font-mono">{usedTotal.toLocaleString('vi-VN')} đ</span></div>
+                              <div className="flex justify-between"><span className="text-gray-500">Linh kiện thay thế (tổng quan):</span><span className="font-mono">{replacedTotal.toLocaleString('vi-VN')} đ</span></div>
+                              <div className="flex justify-between"><span className="text-gray-500">Chi phí phát sinh:</span><span className="font-mono">{extraCost.toLocaleString('vi-VN')} đ</span></div>
+                              <hr className="my-2" />
+                              <div className="flex justify-between font-bold text-lg"><span>Tổng ước tính:</span><span className="font-mono">{estimatedTotal.toLocaleString('vi-VN')} đ</span></div>
+                              {trackingResult.tongTien ? (
+                                <div className="mt-2 text-sm text-green-600">Tổng sau khi hoàn tất: <span className="font-mono">{Number(trackingResult.tongTien).toLocaleString('vi-VN')} đ</span></div>
+                              ) : null}
                             </div>
                           </div>
                         )
                       })()}
+
+                      {/* Payment Section */}
+                      {(
+                        (trackingResult.chiPhiPhatSinh && trackingResult.chiPhiPhatSinh > 0) ||
+                        (Array.isArray(trackingResult.linhKienThayThe) && trackingResult.linhKienThayThe.length > 0)
+                      ) && (
+                        (() => {
+                          const costs = []
+                          if (trackingResult.chiPhiPhatSinh) costs.push({ moTaChiPhi: 'Chi phí phát sinh', soTien: trackingResult.chiPhiPhatSinh })
+                          if (Array.isArray(trackingResult.linhKienThayThe)) trackingResult.linhKienThayThe.forEach(item => costs.push({ moTaChiPhi: item.tenLinhKien || 'Linh kiện', soTien: item.chiPhi || 0 }))
+                          const totalFromItems = costs.reduce((s, c) => s + (c.soTien || 0), 0)
+                          return (
+                            <div className="p-6 bg-yellow-50 rounded-xl border border-yellow-100 payment-info">
+                              <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                <span className="text-xl">💰</span>
+                                Chi phí sửa chữa
+                              </h3>
+                              <div className="bg-white rounded-lg border border-yellow-200 overflow-hidden mb-4">
+                                <table className="w-full text-sm">
+                                  <thead className="bg-yellow-50/50">
+                                    <tr>
+                                      <th className="p-3 text-left">Hạng mục</th>
+                                      <th className="p-3 text-right">Chi phí</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-gray-100">
+                                    {costs.map((cost, idx) => (
+                                      <tr key={idx}>
+                                        <td className="p-3">{cost.moTaChiPhi}</td>
+                                        <td className="p-3 text-right font-mono">{(cost.soTien || 0).toLocaleString('vi-VN')} đ</td>
+                                      </tr>
+                                    ))}
+                                    <tr className="font-bold bg-gray-50">
+                                      <td className="p-3">Tổng cộng</td>
+                                      <td className="p-3 text-right text-red-600">{totalFromItems.toLocaleString('vi-VN')} đ</td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </div>
+
+                              <div className="flex flex-col md:flex-row md:items-center md:justify-end items-start gap-4">
+                                <div className="text-sm md:text-right">
+                                  <div>
+                                    <span className="text-gray-500">Tổng (tính từ mục): </span>
+                                    <span className="font-bold">{totalFromItems.toLocaleString('vi-VN')} đ</span>
+                                  </div>
+                                  {trackingResult.tongTien ? (
+                                    <div className="text-green-600 font-semibold">Tổng sau khi hoàn tất: {Number(trackingResult.tongTien).toLocaleString('vi-VN')} đ</div>
+                                  ) : null}
+                                </div>
+
+                                <div className="flex items-center gap-4">
+                                  <div className="text-sm">
+                                    <span className="text-gray-500">Trạng thái: </span>
+                                    <span className={`font-bold ${trackingResult.trangThaiThanhToan === 'da_thanh_toan' ? 'text-green-600' : 'text-red-500'}`}>
+                                      {trackingResult.trangThaiThanhToan === 'da_thanh_toan' ? 'Đã thanh toán' : 'Chưa thanh toán'}
+                                    </span>
+                                  </div>
+                                  {trackingResult.trangThaiThanhToan !== 'da_thanh_toan' && (
+                                    <button onClick={() => handlePayment(trackingResult._id || trackingResult.maPhieu)} className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium shadow-sm transition-colors">Thanh toán ngay</button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })()
+                      )}
                     </div>
                   )}
                 </div>

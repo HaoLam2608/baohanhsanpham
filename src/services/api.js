@@ -103,6 +103,12 @@ export const customerAPI = {
     }
   },
 
+  // Alias used by frontend pages
+  createTicket: async function (requestData) {
+    // Reuse submitWarrantyRequest for backward compatibility
+    return this.submitWarrantyRequest(requestData)
+  },
+
   // Theo dõi phiếu bảo hành
   trackTicket: async (ticketId) => {
     const response = await fetch(`${API_BASE_URL}/customer/track/${ticketId}`, {

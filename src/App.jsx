@@ -16,13 +16,14 @@ function App() {
     const token = storage.getToken()
     const user = storage.getUser()
     if (token && user) {
-      setCurrentUser(user.chucVu)
+      setCurrentUser(user)
       setShowLogin(true) // Skip landing page if already logged in
     }
   }, [])
 
   const handleLogin = (role) => {
-    setCurrentUser(role)
+    const user = storage.getUser()
+    setCurrentUser(user)
   }
 
   const handleLogout = () => {
@@ -50,16 +51,16 @@ function App() {
   }
 
   // Hiển thị trang theo vai trò
-  if (currentUser === 'khachhang') {
-    return <CustomerPage onLogout={handleLogout} />
+  if (currentUser?.chucVu === 'khachhang') {
+    return <CustomerPage user={currentUser} onLogout={handleLogout} />
   }
 
-  if (currentUser === 'nhanvien') {
-    return <EmployeePage onLogout={handleLogout} />
+  if (currentUser?.chucVu === 'nhanvien') {
+    return <EmployeePage user={currentUser} onLogout={handleLogout} />
   }
 
-  if (currentUser === 'quanly') {
-    return <ManagerPage onLogout={handleLogout} />
+  if (currentUser?.chucVu === 'quanly') {
+    return <ManagerPage user={currentUser} onLogout={handleLogout} />
   }
 
   return null
