@@ -14,25 +14,22 @@ const connectDB = async () => {
         const collectionNames = collections.map(c => c.name);
 
         // Create collections if they don't exist
-        if (!collectionNames.includes('nhanviens')) {
-            await db.createCollection('nhanviens');
-            console.log('Created collection: nhanviens');
-        }
-        if (!collectionNames.includes('sanphams')) {
-            await db.createCollection('sanphams');
-            console.log('Created collection: sanphams');
-        }
-        if (!collectionNames.includes('khachhangs')) {
-            await db.createCollection('khachhangs');
-            console.log('Created collection: khachhangs');
-        }
-        if (!collectionNames.includes('phieubaohanhes')) {
-            await db.createCollection('phieubaohanhes');
-            console.log('Created collection: phieubaohanhes');
-        }
-        if (!collectionNames.includes('chitietbaohanhes')) {
-            await db.createCollection('chitietbaohanhes');
-            console.log('Created collection: chitietbaohanhes');
+        const requiredCollections = [
+            'nhanviens',
+            'sanphams',
+            'khachhangs',
+            'phieubaohanhs',
+            'linhkiens',
+            'phieubaohanhtimelines',
+            'phieubaohanhcosts',
+            'phieubaohanhattachments'
+        ];
+
+        for (const colName of requiredCollections) {
+            if (!collectionNames.includes(colName)) {
+                await db.createCollection(colName);
+                console.log(`Created collection: ${colName}`);
+            }
         }
     } catch (err) {
         console.error('MongoDB connection error', err);

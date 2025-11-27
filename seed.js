@@ -10,30 +10,46 @@ const PhieuBaoHanh = require('./src/models/phieubaohanh-new');
 const PhieuBaoHanhTimeline = require('./src/models/phieubaohanh-timeline');
 const PhieuBaoHanhCost = require('./src/models/phieubaohanh-cost');
 const PhieuBaoHanhAttachment = require('./src/models/phieubaohanh-attachment');
+const LinhKien = require('./src/models/linhkien');
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/bh_cau_long';
 
-// Kết nối MongoDB
-mongoose.connect(MONGO_URI);
-
-async function seedDatabase() {
+async function seedDatabase(force = false) {
+  let connectionCreated = false;
   try {
-    console.log('🔄 Đang kết nối MongoDB...');
-    
-    // Xóa dữ liệu cũ (optional - comment out nếu muốn giữ data cũ)
+    if (mongoose.connection.readyState !== 1) {
+      console.log('🔄 Đang kết nối MongoDB...');
+      await mongoose.connect(MONGO_URI);
+      connectionCreated = true;
+    }
+
+    // Check if data exists
+    if (!force) {
+      const count = await NhanVien.countDocuments();
+      if (count > 0) {
+        console.log('⚠️ Database đã có dữ liệu. Bỏ qua seeding.');
+        return;
+      }
+    }
+
+    // Xóa dữ liệu cũ
     console.log('🗑️  Xóa dữ liệu cũ...');
     await NhanVien.deleteMany({});
     await KhachHang.deleteMany({});
     await SanPham.deleteMany({});
     await PhieuBaoHanh.deleteMany({});
-    
+    await PhieuBaoHanhTimeline.deleteMany({});
+    await PhieuBaoHanhCost.deleteMany({});
+    await PhieuBaoHanhAttachment.deleteMany({});
+    await LinhKien.deleteMany({});
+
     console.log('✅ Đã xóa dữ liệu cũ');
 
     // ========== TẠO NHÂN VIÊN VÀ QUẢN LÝ ==========
     console.log('\n👥 Tạo tài khoản nhân viên và quản lý...');
-    
+
     const hashedPassword = await bcrypt.hash('123456', 10);
-    
+
     const nhanViens = await NhanVien.insertMany([
       {
         hoTen: 'Nguyễn Văn Admin',
@@ -60,12 +76,12 @@ async function seedDatabase() {
         chucVu: 'nhanvien',
       },
     ]);
-    
+
     console.log(`✅ Đã tạo ${nhanViens.length} nhân viên`);
 
     // ========== TẠO KHÁCH HÀNG ==========
     console.log('\n🙋 Tạo tài khoản khách hàng...');
-    
+
     const khachHangs = await KhachHang.insertMany([
       {
         hoTen: 'Nguyễn Minh Tuấn',
@@ -103,12 +119,23 @@ async function seedDatabase() {
         diaChi: '654 Điện Biên Phủ, Q10, TP.HCM',
       },
     ]);
-    
+
     console.log(`✅ Đã tạo ${khachHangs.length} khách hàng`);
+
+    // ========== TẠO LINH KIỆN ==========
+    console.log('\n🔧 Tạo linh kiện...');
+    const linhKiens = await LinhKien.insertMany([
+      { maLinhKien: 'LK001', tenLinhKien: 'Dây cước Yonex BG65', soLuongTon: 100, giaNhap: 100000, giaXuat: 150000, moTa: 'Cước bền' },
+      { maLinhKien: 'LK002', tenLinhKien: 'Dây cước Yonex BG66 Ultimax', soLuongTon: 50, giaNhap: 120000, giaXuat: 180000, moTa: 'Cước nảy' },
+      { maLinhKien: 'LK003', tenLinhKien: 'Cán vợt G5', soLuongTon: 200, giaNhap: 20000, giaXuat: 50000, moTa: 'Cán gỗ' },
+      { maLinhKien: 'LK004', tenLinhKien: 'Gen vợt (bộ)', soLuongTon: 500, giaNhap: 5000, giaXuat: 20000, moTa: 'Gen chống lún' },
+      { maLinhKien: 'LK005', tenLinhKien: 'Đế giày 40-41', soLuongTon: 30, giaNhap: 150000, giaXuat: 250000, moTa: 'Đế cao su' }
+    ]);
+    console.log(`✅ Đã tạo ${linhKiens.length} linh kiện`);
 
     // ========== TẠO SẢN PHẨM ==========
     console.log('\n🏸 Tạo sản phẩm...');
-    
+
     const brands = ['Yonex', 'Victor', 'Lining', 'Mizuno', 'Apacs'];
     const productTypes = [
       { type: 'Vot', name: 'Vợt cầu lông' },
@@ -116,19 +143,19 @@ async function seedDatabase() {
       { type: 'Balo', name: 'Balo cầu lông' },
       { type: 'PhuKien', name: 'Phụ kiện cầu lông' },
     ];
-    
+
     const sanPhams = [];
-    
+
     for (let i = 0; i < khachHangs.length; i++) {
       const customer = khachHangs[i];
       const numProducts = Math.floor(Math.random() * 3) + 1; // 1-3 sản phẩm mỗi khách
-      
+
       for (let j = 0; j < numProducts; j++) {
         const brand = brands[Math.floor(Math.random() * brands.length)];
         const productType = productTypes[Math.floor(Math.random() * productTypes.length)];
         const serial = `SN${Date.now()}${i}${j}`;
         const ngayMua = new Date(2024, Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1);
-        
+
         sanPhams.push({
           loaiSanPham: productType.type,
           thuongHieu: brand,
@@ -136,7 +163,7 @@ async function seedDatabase() {
           soSerial: serial,
           ngayMua: ngayMua,
           thoiHanBaoHanhThang: 12,
-          thongTinKyThuat: { 
+          thongTinKyThuat: {
             moTa: `Sản phẩm chính hãng ${brand}. Bảo hành 12 tháng.`,
             xuatXu: 'Trung Quốc',
             trongLuong: productType.type === 'Vot' ? '85g' : productType.type === 'Giay' ? '350g' : '500g'
@@ -146,13 +173,13 @@ async function seedDatabase() {
         });
       }
     }
-    
+
     const createdSanPhams = await SanPham.insertMany(sanPhams);
     console.log(`✅ Đã tạo ${createdSanPhams.length} sản phẩm`);
 
     // ========== TẠO PHIẾU BẢO HÀNH ==========
     console.log('\n📋 Tạo phiếu bảo hành...');
-    
+
     const statuses = ['tiep_nhan', 'dang_kiem_tra', 'dang_sua', 'hoan_tat'];
     const issues = [
       'Dây đứt',
@@ -164,9 +191,9 @@ async function seedDatabase() {
       'Vợt bị cong',
       'Giày bị bong tróc'
     ];
-    
+
     const phieuBaoHanhs = [];
-    
+
     // Tạo phiếu bảo hành với cấu trúc mới
     for (let i = 0; i < Math.min(15, createdSanPhams.length); i++) {
       const sanPham = createdSanPhams[i];
@@ -259,7 +286,7 @@ async function seedDatabase() {
 
       phieuBaoHanhs.push(savedPhieu);
     }
-    console.log(`✅ Đã tạo ${createdPhieus.length} phiếu bảo hành`);
+    console.log(`✅ Đã tạo ${phieuBaoHanhs.length} phiếu bảo hành`);
 
     // ========== THỐNG KÊ ==========
     console.log('\n📊 THỐNG KÊ DỮ LIỆU:');
@@ -268,7 +295,8 @@ async function seedDatabase() {
     console.log(`│ 👥 Nhân viên: ${nhanViens.length - 1}                            │`);
     console.log(`│ 🙋 Khách hàng: ${khachHangs.length}                           │`);
     console.log(`│ 🏸 Sản phẩm: ${createdSanPhams.length}                            │`);
-    console.log(`│ 📋 Phiếu bảo hành: ${createdPhieus.length}                     │`);
+    console.log(`│ 🔧 Linh kiện: ${linhKiens.length}                           │`);
+    console.log(`│ 📋 Phiếu bảo hành: ${phieuBaoHanhs.length}                     │`);
     console.log('└─────────────────────────────────────────────┘');
 
     console.log('\n🔑 TÀI KHOẢN ĐĂNG NHẬP (Tất cả mật khẩu: 123456):');
@@ -290,14 +318,20 @@ async function seedDatabase() {
     console.log('└─────────────────────────────────────────────────────────┘');
 
     console.log('\n✨ Hoàn tất! Database đã được seed thành công.');
-    
+
   } catch (err) {
     console.error('❌ Lỗi:', err);
   } finally {
-    await mongoose.connection.close();
-    console.log('🔌 Đã đóng kết nối MongoDB');
+    if (connectionCreated) {
+      await mongoose.connection.close();
+      console.log('🔌 Đã đóng kết nối MongoDB');
+    }
   }
 }
 
-// Chạy seeder
-seedDatabase();
+// Chạy seeder nếu file được gọi trực tiếp
+if (require.main === module) {
+  seedDatabase(true);
+}
+
+module.exports = seedDatabase;

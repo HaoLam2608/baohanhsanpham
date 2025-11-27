@@ -84,6 +84,7 @@ exports.trackWarrantyTicket = async (req, res) => {
         if (!ticket) return res.status(404).json({ message: 'Phiếu bảo hành không tồn tại' });
 
         res.json({
+            _id: ticket._id,
             maPhieu: ticket.maPhieu,
             trangThai: ticket.trangThai,
             sanPham: ticket.sanPhamId,
