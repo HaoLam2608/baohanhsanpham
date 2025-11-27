@@ -125,8 +125,15 @@ exports.submitWarrantyRequest = async (req, res) => {
             moTaLoi,
             loaiLoiDuDoan,
             thongTinLienHe = '{}',
-            tepDinhKem = []
+            tepDinhKem = [],
+            maDonHang: bodyMaDonHang = '',
+            soSerial: bodySoSerial = ''
         } = req.body || {};
+
+        // Debug: log incoming body/files to help track missing fields
+        console.log('⤴️ submitWarrantyRequest - incoming body:', req.body)
+        console.log('⤴️ submitWarrantyRequest - headers.authorization:', req.headers?.authorization || null)
+        console.log('⤴️ submitWarrantyRequest - uploaded files:', Array.isArray(req.files) ? req.files.map(f => ({ fieldname: f.fieldname, originalname: f.originalname, size: f.size })) : req.files)
 
         // If thongTinLienHe sent as JSON string (from FormData), parse it
         if (typeof thongTinLienHe === 'string') {
@@ -160,23 +167,60 @@ exports.submitWarrantyRequest = async (req, res) => {
 
         const allAttachments = [...uploadedAttachments, ...bodyAttachments];
 
-        if (!khachHangId || !sanPhamId || !moTaLoi) {
+        // Normalize and defensive parsing
+        khachHangId = khachHangId ? String(khachHangId).trim() : ''
+        moTaLoi = moTaLoi ? String(moTaLoi).trim() : ''
+
+        if (!khachHangId || !moTaLoi) {
+            console.warn('Missing required fields:', { khachHangId, moTaLoi })
             return res.status(400).json({ message: 'Thiếu thông tin bắt buộc' });
         }
 
-        const {
+        const parsedThongTin = typeof thongTinLienHe === 'object' ? thongTinLienHe : (function () {
+            try { return JSON.parse(thongTinLienHe); } catch (e) { return {}; }
+        })();
+
+        let {
             hoTen = '',
             soDienThoai = '',
             email = '',
             maDonHang = '',
             soSerial = ''
-        } = thongTinLienHe || {};
+        } = parsedThongTin || {};
+
+        // Prefer explicit top-level fields if provided
+        maDonHang = (maDonHang && maDonHang.trim()) || (bodyMaDonHang && String(bodyMaDonHang).trim()) || '';
+        soSerial = (soSerial && soSerial.trim()) || (bodySoSerial && String(bodySoSerial).trim()) || '';
+
+        // If contact info not provided in form, try to use registered customer info
+            if ((!hoTen || !hoTen.trim() || !soDienThoai || !soDienThoai.trim()) && khachHangId) {
+            try {
+                const customer = await KhachHang.findById(khachHangId);
+                if (customer) {
+                    hoTen = hoTen && hoTen.trim() ? hoTen : (customer.hoTen || '');
+                    soDienThoai = soDienThoai && soDienThoai.trim() ? soDienThoai : (customer.soDienThoai || '');
+                    email = email && email.trim() ? email : (customer.email || '');
+                }
+            } catch (e) {
+                // ignore lookup errors here — validation will catch missing info
+            }
+        }
 
         if (!hoTen.trim() || !soDienThoai.trim()) {
             return res.status(400).json({ message: 'Vui lòng cung cấp họ tên và số điện thoại liên hệ' });
         }
 
-        if (!maDonHang.trim() && !soSerial.trim()) {
+        // If sanPhamId not provided, but serial is provided, try to resolve product by serial
+        if (!sanPhamId && soSerial) {
+            try {
+                const found = await SanPham.findOne({ soSerial: soSerial });
+                if (found) sanPhamId = found._id;
+            } catch (e) {
+                // ignore
+            }
+        }
+
+        if (!maDonHang && !soSerial && !sanPhamId) {
             return res.status(400).json({ message: 'Vui lòng nhập mã đơn hàng hoặc số serial sản phẩm' });
         }
 

@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const PhieuSchema = new mongoose.Schema({
     maPhieu: { type: String, required: true, unique: true },
-    sanPhamId: { type: mongoose.Schema.Types.ObjectId, ref: 'SanPham', required: true },
+    sanPhamId: { type: mongoose.Schema.Types.ObjectId, ref: 'SanPham' },
     khachHangId: { type: mongoose.Schema.Types.ObjectId, ref: 'KhachHang', required: true },
     nhanVienTiepNhanId: { type: mongoose.Schema.Types.ObjectId, ref: 'NhanVien' },
 
@@ -20,6 +20,47 @@ const PhieuSchema = new mongoose.Schema({
     // Thông tin xử lý cơ bản
     ketQuaKiemTra: { type: String },
     moTaXuLy: { type: String },
+    // Tiến độ xử lý (các cập nhật nhỏ trong quá trình sửa)
+    // Lịch sử trạng thái & tiến độ
+    lichSuTrangThai: [{
+        trangThai: { type: String },
+        thoiGian: { type: Date, default: Date.now },
+        nhanVienId: mongoose.Schema.Types.ObjectId,
+        ghiChu: { type: String }
+    }],
+
+    moTaTienDo:[{
+        noiDung: { type: String },
+        thoiGian: { type: Date, default: Date.now },
+        nhanVienId: mongoose.Schema.Types.ObjectId
+    }],
+
+    // Linh kiện đã sử dụng / thay thế trong quá trình sửa
+    linhKienSuDung: [{
+        linhKienId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'LinhKien'
+        },
+        tenLinhKien: String,
+        soLuong: { type: Number, default: 1, min: 1 },
+        donGia: Number,
+        thanhTien: Number
+    }],
+
+    // Linh kiện thay thế (tổng quan, có thể dùng để báo cáo)
+    linhKienThayThe: [{
+        tenLinhKien: String,
+        maLinhKien: String,
+        chiPhi: { type: Number, default: 0 }
+    }],
+
+    // Hình ảnh quá trình sửa
+    hinhAnhSua: [String],
+
+    // Chi phí liên quan
+    tongTienLinhKien: { type: Number, default: 0 },
+    chiPhiPhatSinh: { type: Number, default: 0 },
+    tongTien: { type: Number, default: 0 },
 
     // Trạng thái và thời gian
     trangThai: {
