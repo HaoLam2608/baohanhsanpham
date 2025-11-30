@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { employeeAPI, storage, inventoryAPI } from '../services/api'
+import { employeeAPI, storage, inventoryAPI, customerAPI } from '../services/api'
 import SettingsPage from './SettingsPage'
 import {
   LayoutDashboard,
@@ -168,7 +168,21 @@ export default function EmployeePage({ onLogout }) {
       setLoading(true)
       setError('')
 
+      // First call the inspect endpoint (updates ticket status and inspection info)
       await employeeAPI.inspectProduct(selectedTicket._id, inspectionForm)
+
+      // If the inspector selected images, upload them using the dedicated upload endpoint
+      if (uploadImages && uploadImages.length > 0) {
+        const fd = new FormData()
+        uploadImages.forEach(f => fd.append('images', f))
+        try {
+          await employeeAPI.uploadRepairImages(selectedTicket._id, fd)
+        } catch (upErr) {
+          // If image upload fails, still continue but show an error
+          console.error('Image upload after inspect failed:', upErr)
+          setError('Kiểm tra thành công nhưng tải ảnh thất bại: ' + (upErr.message || upErr))
+        }
+      }
 
       setSuccess('✅ Đã bắt đầu kiểm tra sản phẩm')
       setShowInspectModal(false)
@@ -178,10 +192,49 @@ export default function EmployeePage({ onLogout }) {
         canThayThe: false,
         linhKienCanThay: ''
       })
-      loadMyTasks()
+
+      // clean up selected images / previews
+      if (imagePreview && imagePreview.length > 0) {
+        imagePreview.forEach(url => URL.revokeObjectURL(url))
+      }
+      setUploadImages([])
+      setImagePreview([])
+
+      await loadMyTasks()
       setSelectedTicket(null)
     } catch (err) {
       setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Open inspect modal but first fetch detailed ticket (includes attachments)
+  const openInspectModal = async (ticket) => {
+    try {
+      setLoading(true)
+      setError('')
+
+      // use maPhieu if present so endpoint can look up by code
+      const idOrCode = ticket.maPhieu || ticket._id
+      let detail = null
+      try {
+        detail = await customerAPI.trackTicket(idOrCode)
+      } catch (e) {
+        console.warn('Failed to fetch detailed track for ticket, falling back to list ticket:', e)
+      }
+
+      // Merge known shapes: customer track returns sanPham/khachHang etc while list returns sanPhamId/khachHangId
+      const merged = {
+        ...ticket,
+        ...(detail || {})
+      }
+
+      setSelectedTicket(merged)
+      setShowInspectModal(true)
+    } catch (err) {
+      console.error('openInspectModal error:', err)
+      setError(err.message || 'Không thể mở chi tiết kiểm tra')
     } finally {
       setLoading(false)
     }
@@ -251,15 +304,21 @@ export default function EmployeePage({ onLogout }) {
         return
       }
 
-      if (!progressUpdate.ticketId) {
+      // fallback: if progressUpdate.ticketId not set, try selectedTicket
+      let ticketIdToUse = progressUpdate.ticketId
+      if (!ticketIdToUse) {
+        if (selectedTicket && selectedTicket._id) ticketIdToUse = selectedTicket._id
+      }
+      if (!ticketIdToUse) {
         setError('Không tìm thấy phiếu bảo hành')
         return
       }
 
-      // Convert images to base64 or URLs (simplified version)
-      const imageUrls = uploadImages.map(img => img.name) // TODO: Implement proper file upload
+      // Build FormData and upload files
+      const fd = new FormData()
+      uploadImages.forEach((f) => fd.append('images', f))
 
-      await employeeAPI.uploadRepairImages(progressUpdate.ticketId, imageUrls)
+  await employeeAPI.uploadRepairImages(ticketIdToUse, fd)
 
       setSuccess(`✅ Đã tải lên ${uploadImages.length} hình ảnh`)
       setUploadImages([])
@@ -318,6 +377,98 @@ export default function EmployeePage({ onLogout }) {
       loadInv()
     }
   }, [showDetailModal])
+
+  // cleanup previews when detail modal closed
+  useEffect(() => {
+    if (!showDetailModal) {
+      imagePreview.forEach(url => URL.revokeObjectURL(url))
+      setImagePreview([])
+      setUploadImages([])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showDetailModal])
+
+  // cleanup previews when inspect modal closed
+  useEffect(() => {
+    if (!showInspectModal) {
+      if (imagePreview && imagePreview.length > 0) {
+        imagePreview.forEach(url => URL.revokeObjectURL(url))
+      }
+      setImagePreview([])
+      setUploadImages([])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showInspectModal])
+
+  // Helper: get image URLs from ticket using multiple possible field names
+  const BASE_API_URL = import.meta.env.VITE_API_URL || ''
+  const prefixUrl = (u) => {
+    if (!u) return ''
+    if (u.startsWith('http')) return u
+
+    const serverBase = BASE_API_URL ? BASE_API_URL.replace(/\/api\/?$/, '') : ''
+
+    if (u.startsWith('/')) {
+      return serverBase ? (serverBase.replace(/\/$/, '') + u) : u
+    }
+
+    if (u.includes('/api/uploads') || u.includes('api/uploads') || u.includes('/uploads')) {
+      const path = u.startsWith('/') ? u : '/' + u
+      return serverBase ? (serverBase.replace(/\/$/, '') + path) : path
+    }
+
+    return serverBase ? (serverBase.replace(/\/$/, '') + '/api/uploads/' + u) : '/api/uploads/' + u
+  }
+
+  const getTicketImageUrls = (ticket) => {
+    if (!ticket) return []
+    const keys = ['hinhAnh', 'hinhAnhLoi', 'hinhAnhSua', 'images', 'attachments', 'attachmentUrls', 'fileUrls', 'media', 'photos', 'anh', 'hinh']
+    const urls = []
+    for (const k of keys) {
+      const v = ticket[k]
+      if (!v) continue
+      if (typeof v === 'string') urls.push(prefixUrl(v))
+      else if (Array.isArray(v)) {
+        v.forEach(item => {
+          if (!item) return
+          if (typeof item === 'string') urls.push(prefixUrl(item))
+          else if (item.url) urls.push(prefixUrl(item.url))
+          else if (item.path) urls.push(prefixUrl(item.path))
+        })
+      } else if (typeof v === 'object') {
+        if (v.url) urls.push(prefixUrl(v.url))
+        else if (v.path) urls.push(prefixUrl(v.path))
+      }
+    }
+    // dedupe
+    return Array.from(new Set(urls)).filter(Boolean)
+  }
+
+  // Specifically get customer-uploaded images (hinhAnhLoi or tepDinhKem.duLieu)
+  const getCustomerImageUrls = (ticket) => {
+    if (!ticket) return []
+    const urls = []
+
+    const add = (u) => {
+      if (!u) return
+      if (typeof u === 'string') urls.push(prefixUrl(u))
+      else if (u.url) urls.push(prefixUrl(u.url))
+      else if (u.path) urls.push(prefixUrl(u.path))
+      else if (u.duLieu) urls.push(prefixUrl(u.duLieu))
+    }
+
+    if (ticket.hinhAnhLoi) {
+      if (typeof ticket.hinhAnhLoi === 'string') add(ticket.hinhAnhLoi)
+      else if (Array.isArray(ticket.hinhAnhLoi)) ticket.hinhAnhLoi.forEach(i => add(i))
+      else add(ticket.hinhAnhLoi)
+    }
+
+    if (ticket.tepDinhKem && Array.isArray(ticket.tepDinhKem)) {
+      ticket.tepDinhKem.forEach(att => add(att))
+    }
+
+    return Array.from(new Set(urls)).filter(Boolean)
+  }
 
   const handleCompleteRepair = async (e) => {
     e.preventDefault()
@@ -670,10 +821,7 @@ export default function EmployeePage({ onLogout }) {
                                 <td className="px-6 py-4 text-right space-x-2">
                                   {task.trangThai === 'tiep_nhan' && (
                                     <button
-                                      onClick={() => {
-                                        setSelectedTicket(task)
-                                        setShowInspectModal(true)
-                                      }}
+                                      onClick={() => openInspectModal(task)}
                                       className="text-blue-600 hover:text-blue-800 font-medium text-sm"
                                       title="Kiểm tra"
                                     >
@@ -748,6 +896,29 @@ export default function EmployeePage({ onLogout }) {
                 <p><strong>Mô tả lỗi:</strong> {selectedTicket.moTaLoi}</p>
               </div>
 
+              {/* Customer-uploaded images (hinhAnhLoi) */}
+              {(() => {
+                const customerImgs = getCustomerImageUrls(selectedTicket)
+                if (!customerImgs || customerImgs.length === 0) return null
+                return (
+                  <div className="bg-white p-4 rounded-xl border border-gray-100 mb-4">
+                    <h4 className="font-bold text-gray-800 mb-3">Hình ảnh lỗi (khách hàng gửi)</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      {customerImgs.map((src, i) => (
+                        <div key={i} className="relative border rounded overflow-hidden bg-gray-50">
+                          <img
+                            src={src}
+                            alt={`customer-img-${i}`}
+                            className="object-cover w-full h-28 cursor-pointer"
+                            onClick={() => window.open(src, '_blank')}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })()}
+
               <form onSubmit={handleInspect} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Loại lỗi dự đoán *</label>
@@ -798,6 +969,8 @@ export default function EmployeePage({ onLogout }) {
                     />
                   </div>
                 )}
+
+                {/* image input removed from inspect modal per request */}
 
                 <div className="flex gap-3 pt-4">
                   <button type="submit" className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 font-medium" disabled={loading}>
@@ -895,6 +1068,29 @@ export default function EmployeePage({ onLogout }) {
                     </div>
                   </div>
 
+                  {/* Existing uploaded images (if any) */}
+                  {(() => {
+                    const ticketImages = getTicketImageUrls(selectedTicket)
+                    if (!ticketImages || ticketImages.length === 0) return null
+                    return (
+                      <div className="bg-white p-4 rounded-xl border border-gray-100">
+                        <h4 className="font-bold text-gray-800 mb-3">Hình ảnh đã tải lên</h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          {ticketImages.map((src, i) => (
+                            <div key={i} className="relative border rounded overflow-hidden bg-gray-50">
+                              <img
+                                src={src}
+                                alt={`ticket-img-${i}`}
+                                className="object-cover w-full h-28 cursor-pointer"
+                                onClick={() => window.open(src, '_blank')}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })()}
+
                   {/* Progress Update Form */}
                   {(selectedTicket.trangThai === 'dang_kiem_tra' || selectedTicket.trangThai === 'dang_sua') && (
                     <div className="border border-gray-200 rounded-xl p-4">
@@ -914,6 +1110,56 @@ export default function EmployeePage({ onLogout }) {
                         >
                           Gửi cập nhật
                         </button>
+
+                        {/* Image upload for progress (employee) */}
+                        <div className="pt-3">
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Hình ảnh / Video (tùy chọn)</label>
+                          <input
+                            type="file"
+                            accept="image/*,video/*"
+                            multiple
+                            onChange={handleImageSelect}
+                            className="w-full text-sm text-gray-600"
+                          />
+
+                          {/* Previews */}
+                          {imagePreview && imagePreview.length > 0 && (
+                            <div className="mt-3 grid grid-cols-4 gap-2">
+                              {imagePreview.map((src, idx) => (
+                                <div key={idx} className="relative border rounded overflow-hidden">
+                                  <img src={src} alt={`preview-${idx}`} className="object-cover w-full h-24" />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      // remove selected image
+                                      const newFiles = [...uploadImages]
+                                      newFiles.splice(idx, 1)
+                                      setUploadImages(newFiles)
+                                      const newPre = [...imagePreview]
+                                      URL.revokeObjectURL(newPre[idx])
+                                      newPre.splice(idx, 1)
+                                      setImagePreview(newPre)
+                                    }}
+                                    className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1"
+                                    title="Xóa"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          <div className="mt-3">
+                            <button
+                              onClick={handleUploadImages}
+                              disabled={uploadImages.length === 0 || loading}
+                              className="w-full bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+                            >
+                              {loading ? 'Đang tải lên...' : `Tải lên ${uploadImages.length > 0 ? uploadImages.length : ''} hình ảnh`}
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}

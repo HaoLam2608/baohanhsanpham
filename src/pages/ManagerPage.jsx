@@ -173,6 +173,23 @@ export default function ManagerPage({ onLogout }) {
     }
   }
 
+  // Helper to prefix upload paths to full URLs
+  const BASE_API_URL = import.meta.env.VITE_API_URL || ''
+  const prefixUrl = (u) => {
+    if (!u) return ''
+    if (u.startsWith('http')) return u
+    const serverBase = BASE_API_URL ? BASE_API_URL.replace(/\/api\/?$/, '') : ''
+    if (u.startsWith('/')) {
+      if (serverBase) return serverBase.replace(/\/$/, '') + u
+      return u
+    }
+    if (u.includes('/api/uploads') || u.includes('api/uploads') || u.includes('/uploads')) {
+      const path = u.startsWith('/') ? u : '/' + u
+      return serverBase ? (serverBase.replace(/\/$/, '') + path) : path
+    }
+    return serverBase ? (serverBase.replace(/\/$/, '') + '/api/uploads/' + u) : '/api/uploads/' + u
+  }
+
   const loadInventory = async () => {
     try {
       setLoading(true)
@@ -411,6 +428,22 @@ export default function ManagerPage({ onLogout }) {
     // Load employees nếu chưa có
     if (employees.length === 0) {
       loadEmployees()
+    }
+  }
+
+  // Open ticket detail and fetch full info (attachments, timeline, cost)
+  const openTicketDetail = async (ticket) => {
+    setSelectedTicketDetail(ticket)
+    setShowTicketDetail(true)
+    try {
+      // try to fetch richer detail (includes hinhAnhLoi/hinhAnhSua from attachment)
+      const detail = await managerAPI.getTicketDetail(ticket._id || ticket.maPhieu)
+      if (detail) {
+        // merge fields (detail may contain arrays like hinhAnhLoi, moTaTienDo, etc.)
+        setSelectedTicketDetail(prev => ({ ...(prev || {}), ...(detail || {}) }))
+      }
+    } catch (err) {
+      console.warn('Could not fetch ticket detail:', err)
     }
   }
 
@@ -911,7 +944,7 @@ export default function ManagerPage({ onLogout }) {
                                     <Users className="w-5 h-5" />
                                   </button>
                                   <button
-                                    onClick={() => { setSelectedTicketDetail(ticket); setShowTicketDetail(true); }}
+                                    onClick={() => openTicketDetail(ticket)}
                                     className="text-gray-600 hover:text-gray-800"
                                     title="Xem chi tiết"
                                   >
@@ -1860,6 +1893,25 @@ export default function ManagerPage({ onLogout }) {
                       <p><span className="text-gray-500">Trạng thái:</span> <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getStatusBadge(selectedTicketDetail.trangThai).class}`}>{getStatusBadge(selectedTicketDetail.trangThai).text}</span></p>
                     </div>
                   </div>
+
+                  {/* Customer uploaded images (hinhAnhLoi) */}
+                  {(() => {
+                    const raw = selectedTicketDetail.hinhAnhLoi || (Array.isArray(selectedTicketDetail.tepDinhKem) ? selectedTicketDetail.tepDinhKem.map(t => t.duLieu) : [])
+                    const imgs = Array.isArray(raw) ? raw.map(u => prefixUrl(u)).filter(Boolean) : []
+                    if (!imgs || imgs.length === 0) return null
+                    return (
+                      <div className="bg-white p-4 rounded-xl">
+                        <h4 className="font-bold text-gray-800 mb-2">Hình ảnh khách cung cấp</h4>
+                        <div className="grid grid-cols-3 gap-2">
+                          {imgs.map((src, idx) => (
+                            <div key={idx} className="border rounded overflow-hidden bg-gray-50">
+                              <img src={src} alt={`customer-img-${idx}`} className="object-cover w-full h-28 cursor-pointer" onClick={() => window.open(src, '_blank')} />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })()}
 
                   {/* Thông tin khách hàng */}
                   <div className="bg-white p-4 rounded-xl border border-gray-100">

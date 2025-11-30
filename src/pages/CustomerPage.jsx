@@ -72,6 +72,54 @@ export default function CustomerPage({ user, onLogout }) {
     fetchData()
   }, [])
 
+  // Helper: collect image URLs from ticket object (handles multiple possible field names)
+  const BASE_API_URL = import.meta.env.VITE_API_URL || ''
+  const prefixUrl = (u) => {
+    if (!u) return ''
+    if (u.startsWith('http')) return u
+
+    // derive server base (strip trailing /api if present)
+    const serverBase = BASE_API_URL ? BASE_API_URL.replace(/\/api\/?$/, '') : ''
+
+    // absolute path starting with / -> prefix with serverBase if known, otherwise return as-is
+    if (u.startsWith('/')) {
+      if (serverBase) return serverBase.replace(/\/$/, '') + u
+      return u
+    }
+
+    // if u already contains uploads path, make absolute against serverBase
+    if (u.includes('/api/uploads') || u.includes('api/uploads') || u.includes('/uploads')) {
+      const path = u.startsWith('/') ? u : '/' + u
+      return serverBase ? (serverBase.replace(/\/$/, '') + path) : path
+    }
+
+    // bare filename -> assume /api/uploads/<file>
+    return serverBase ? (serverBase.replace(/\/$/, '') + '/api/uploads/' + u) : '/api/uploads/' + u
+  }
+
+  const getTicketImageUrls = (ticket) => {
+    if (!ticket) return []
+  const keys = ['hinhAnh', 'hinhAnhLoi', 'hinhAnhSua', 'images', 'attachments', 'attachmentUrls', 'fileUrls', 'media', 'photos', 'anh', 'hinh']
+    const urls = []
+    for (const k of keys) {
+      const v = ticket[k]
+      if (!v) continue
+      if (typeof v === 'string') urls.push(prefixUrl(v))
+      else if (Array.isArray(v)) {
+        v.forEach(item => {
+          if (!item) return
+          if (typeof item === 'string') urls.push(prefixUrl(item))
+          else if (item.url) urls.push(prefixUrl(item.url))
+          else if (item.path) urls.push(prefixUrl(item.path))
+        })
+      } else if (typeof v === 'object') {
+        if (v.url) urls.push(prefixUrl(v.url))
+        else if (v.path) urls.push(prefixUrl(v.path))
+      }
+    }
+    return Array.from(new Set(urls)).filter(Boolean)
+  }
+
   const fetchData = async () => {
     setLoading(true)
     try {
@@ -168,16 +216,46 @@ export default function CustomerPage({ user, onLogout }) {
       })
 
       setSuccess('Cảm ơn bạn đã đánh giá dịch vụ!')
-      // Update local rating form + tickets
-      setRatingForm({ ticketId: '', rating: 0, comment: '' })
-      fetchData() // Reload tickets to update list
 
-      // If the user is currently viewing the tracked ticket, re-fetch it from server so the UI shows saved rating
+      // keep the ticketId locally for refresh (don't rely on state which we clear)
+      const ratedTicketId = ratingForm.ticketId
+
+      // Use response to update UI immediately (backend returns { data: { qualityRating, qualityComments } })
+      const updatedPayload = (res && res.data) ? res.data : (res || {})
+
+      // Update local tickets in-place for immediate feedback
+      setMyTickets(prev => prev.map(t => {
+        if (!ratedTicketId) return t
+        if (t._id === ratedTicketId || t.maPhieu === ratedTicketId) {
+          return {
+            ...t,
+            qualityRating: (updatedPayload.qualityRating != null) ? updatedPayload.qualityRating : t.qualityRating,
+            qualityComments: (updatedPayload.qualityComments != null) ? updatedPayload.qualityComments : t.qualityComments
+          }
+        }
+        return t
+      }))
+
+      // Clear local form
+      setRatingForm({ ticketId: '', rating: 0, comment: '' })
+
+      // Refresh server list in background (but UI already updated)
+      fetchData().catch(() => {})
+
+      // If the user is currently viewing the tracked ticket, update or re-fetch it so the UI shows saved rating
       try {
-        if (trackingResult) {
-          // use ticket _id if available (ratingForm.ticketId is _id), track endpoint accepts id or maPhieu
-          const refreshed = await customerAPI.trackTicket(ratingForm.ticketId)
-          if (refreshed) setTrackingResult(refreshed)
+        if (trackingResult && ratedTicketId) {
+          // if trackingResult corresponds to the rated ticket, merge updated fields
+          if ((trackingResult._id && trackingResult._id === ratedTicketId) || (trackingResult.maPhieu && trackingResult.maPhieu === ratedTicketId)) {
+            setTrackingResult(prev => ({
+              ...(prev || {}),
+              qualityRating: (updatedPayload.qualityRating != null) ? updatedPayload.qualityRating : prev?.qualityRating,
+              qualityComments: (updatedPayload.qualityComments != null) ? updatedPayload.qualityComments : prev?.qualityComments
+            }))
+          } else {
+            const refreshed = await customerAPI.trackTicket(ratedTicketId)
+            if (refreshed) setTrackingResult(refreshed)
+          }
         }
       } catch (e) {
         // ignore refresh errors
@@ -773,10 +851,23 @@ export default function CustomerPage({ user, onLogout }) {
                           <div>
                             <div className="flex items-center gap-3 mb-1">
                               <h3 className="font-bold text-lg text-gray-800">{ticket.sanPhamId?.tenSP || 'Sản phẩm'}</h3>
-                              <span className="text-sm text-gray-500 bg-gray-100 px-2 py-0.5 rounded text-xs">#{ticket.maPhieu}</span>
+                              <span className="text-gray-500 bg-gray-100 px-2 py-0.5 rounded text-xs">#{ticket.maPhieu}</span>
                             </div>
                             <p className="text-gray-600 text-sm line-clamp-1">{ticket.moTaLoi}</p>
                           </div>
+                          {/* Thumbnails (if ticket has uploaded images) */}
+                          {(() => {
+                            const imgs = getTicketImageUrls(ticket)
+                            if (!imgs || imgs.length === 0) return null
+                            return (
+                              <div className="mt-3 md:mt-0 md:ml-6 flex items-center gap-2">
+                                {imgs.slice(0, 3).map((src, i) => (
+                                  <img key={i} src={src} alt={`ticket-img-${i}`} className="w-16 h-16 object-cover rounded-md border" onClick={() => window.open(src, '_blank')} />
+                                ))}
+                                {imgs.length > 3 && <div className="text-xs text-gray-500">+{imgs.length - 3}</div>}
+                              </div>
+                            )
+                          })()}
                           <div className="flex items-center gap-3">
                             <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusBadge(ticket.trangThai).color}`}>
                               {getStatusBadge(ticket.trangThai).icon}
@@ -879,6 +970,25 @@ export default function CustomerPage({ user, onLogout }) {
                               <span className="text-gray-500">Số Serial:</span>
                               <span className="font-medium">{trackingResult.sanPham?.soSerial}</span>
                             </div>
+
+                            {/* Images uploaded during repair (hinhAnhLoi) */}
+                            {(() => {
+                              const raw = trackingResult?.hinhAnhLoi || []
+                              const imgs = Array.isArray(raw) ? raw.map(u => prefixUrl(u)).filter(Boolean) : []
+                              if (!imgs || imgs.length === 0) return null
+                              return (
+                                <div className="mt-4">
+                                  <span className="text-gray-500 block mb-2">Hình ảnh đã tải lên:</span>
+                                  <div className="grid grid-cols-3 gap-2">
+                                    {imgs.map((src, idx) => (
+                                      <div key={idx} className="border rounded overflow-hidden bg-gray-50">
+                                        <img src={src} alt={`img-${idx}`} className="object-cover w-full h-28 cursor-pointer" onClick={() => window.open(src, '_blank')} />
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )
+                            })()}
                             <div className="flex justify-between">
                               <span className="text-gray-500">Mã phiếu:</span>
                               <span className="font-mono bg-white px-2 py-0.5 rounded border border-gray-200">
@@ -908,6 +1018,26 @@ export default function CustomerPage({ user, onLogout }) {
                                 </p>
                               </div>
                             )}
+
+                            {/* Show uploaded images (if any) */}
+                            {(() => {
+                              // Only show repair images (hinhAnhSua) in this section
+                              const raw = trackingResult?.hinhAnhSua || []
+                              const imgs = Array.isArray(raw) ? raw.map(u => prefixUrl(u)).filter(Boolean) : []
+                              if (!imgs || imgs.length === 0) return null
+                              return (
+                                <div className="mt-4">
+                                  <span className="text-gray-500 block mb-2">Hình ảnh đã tải lên:</span>
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                    {imgs.map((src, idx) => (
+                                      <div key={idx} className="relative border rounded overflow-hidden bg-gray-50">
+                                        <img src={src} alt={`tracking-img-${idx}`} className="object-cover w-full h-28 cursor-pointer" onClick={() => window.open(src, '_blank')} />
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )
+                            })()}
 
                             {/* Rating display (if exists) */}
                             {(() => {

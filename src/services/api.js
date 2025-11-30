@@ -185,11 +185,28 @@ export const employeeAPI = {
 
   // Upload hình ảnh sửa chữa
   uploadRepairImages: async (ticketId, images) => {
-    const response = await fetch(`${API_BASE_URL}/employee/${ticketId}/upload-images`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ hinhAnhSua: images }),
-    })
+    const url = `${API_BASE_URL}/employee/${ticketId}/upload-images`
+    const headers = getAuthHeaders()
+    const options = { method: 'POST', headers }
+
+    // If caller provides a FormData (files), send as-is and let browser set Content-Type
+    if (images instanceof FormData) {
+      // remove Content-Type for multipart/form-data
+      delete options.headers['Content-Type']
+      options.body = images
+    } else if (Array.isArray(images) && images.length > 0 && images[0] instanceof File) {
+      // convert array of File -> FormData
+      const fd = new FormData()
+      images.forEach((f) => fd.append('images', f))
+      delete options.headers['Content-Type']
+      options.body = fd
+    } else {
+      // fallback: send JSON array of image names/urls
+      options.headers['Content-Type'] = 'application/json'
+      options.body = JSON.stringify({ hinhAnhSua: images })
+    }
+
+    const response = await fetch(url, options)
     return handleResponse(response)
   },
 
@@ -302,6 +319,14 @@ export const managerAPI = {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ approved, reason }),
+    })
+    return handleResponse(response)
+  },
+
+  // Lấy chi tiết phiếu (dùng customer track endpoint để lấy attachments và hình ảnh)
+  getTicketDetail: async (ticketId) => {
+    const response = await fetch(`${API_BASE_URL}/customer/track/${ticketId}`, {
+      headers: getAuthHeaders(),
     })
     return handleResponse(response)
   },
