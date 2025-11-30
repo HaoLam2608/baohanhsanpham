@@ -37,9 +37,11 @@ exports.getWarrantyInfo = async (req, res) => {
                 chiPhiPhatSinh: cost?.chiPhiPhatSinh || 0,
                 tongTienLinhKien: cost?.tongTienLinhKien || 0,
                 tongTien: cost?.tongTien || 0,
-                hinhAnhLoi: attachment?.hinhAnhLoi || [],
-                tepDinhKem: attachment?.tepDinhKem || [],
-                hinhAnhSua: attachment?.hinhAnhSua || []
+                    // prefer attachment document but fall back to ticket fields so
+                    // customer views see images uploaded at ticket creation time
+                    hinhAnhLoi: attachment?.hinhAnhLoi || phieu.hinhAnhLoi || [],
+                    tepDinhKem: attachment?.tepDinhKem || phieu.tepDinhKem || [],
+                    hinhAnhSua: attachment?.hinhAnhSua || phieu.hinhAnhSua || []
                 ,
                 // include rating fields so frontend can show rated state in lists
                 qualityRating: phieu.qualityRating,
@@ -86,6 +88,14 @@ exports.trackWarrantyTicket = async (req, res) => {
         }
 
         if (!ticket) return res.status(404).json({ message: 'Phiếu bảo hành không tồn tại' });
+        // Also load attachment doc so we can include images uploaded during repair (hinhAnhSua)
+        let attachmentDoc = null;
+        try {
+            const PhieuBaoHanhAttachment = require('../models/phieubaohanh-attachment');
+            attachmentDoc = await PhieuBaoHanhAttachment.findOne({ phieuBaoHanhId: ticket._id });
+        } catch (e) {
+            console.error('Failed to load attachment doc:', e);
+        }
 
         res.json({
             _id: ticket._id,
@@ -107,8 +117,11 @@ exports.trackWarrantyTicket = async (req, res) => {
             linhKienSuDung: ticket.linhKienSuDung || [],
             trangThaiThanhToan: ticket.trangThaiThanhToan,
             // Include attachments so frontend can display files
-            tepDinhKem: ticket.tepDinhKem || [],
-            hinhAnhLoi: ticket.hinhAnhLoi || [],
+            // prefer attachment document (PhieuBaoHanhAttachment) but fall back to ticket fields
+            tepDinhKem: (attachmentDoc && Array.isArray(attachmentDoc.tepDinhKem) && attachmentDoc.tepDinhKem.length > 0) ? attachmentDoc.tepDinhKem : (ticket.tepDinhKem || []),
+            hinhAnhLoi: (attachmentDoc && Array.isArray(attachmentDoc.hinhAnhLoi) && attachmentDoc.hinhAnhLoi.length > 0) ? attachmentDoc.hinhAnhLoi : (ticket.hinhAnhLoi || []),
+            // hinhAnhSua is stored either on ticket.hinhAnhSua or in attachmentDoc.hinhAnhSua
+            hinhAnhSua: (attachmentDoc && Array.isArray(attachmentDoc.hinhAnhSua) && attachmentDoc.hinhAnhSua.length > 0) ? attachmentDoc.hinhAnhSua : (ticket.hinhAnhSua || []),
             qualityRating: ticket.qualityRating,
             qualityComments: ticket.qualityComments
         });
@@ -269,6 +282,20 @@ exports.submitWarrantyRequest = async (req, res) => {
         });
 
         await newTicket.save();
+
+        // Also create an attachment document so customer portal and other endpoints
+        // can consistently read uploaded files from the attachment collection.
+        try {
+            const attachmentDoc = new PhieuBaoHanhAttachment({
+                phieuBaoHanhId: newTicket._id,
+                hinhAnhLoi: attachmentImages.slice(0, maxAttachments),
+                tepDinhKem: sanitizedAttachments,
+                hinhAnhSua: []
+            });
+            await attachmentDoc.save();
+        } catch (e) {
+            console.warn('Failed to create PhieuBaoHanhAttachment for new ticket:', e.message || e);
+        }
 
         res.status(201).json({
             message: 'Gửi yêu cầu bảo hành thành công',

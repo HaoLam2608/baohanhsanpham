@@ -206,22 +206,55 @@ exports.markUnableToRepair = async (req, res) => {
 exports.uploadRepairImages = async (req, res) => {
     try {
         const { ticketId } = req.params;
-        const { hinhAnhSua } = req.body;
-
+        // Support both JSON (req.body.hinhAnhSua = [urls]) and multipart/form-data (req.files)
         const ticket = await PhieuBaoHanh.findById(ticketId);
         if (!ticket) return res.status(404).json({ message: 'Phiếu không tồn tại' });
 
-        // Thêm hình ảnh vào mảng
-        if (hinhAnhSua && Array.isArray(hinhAnhSua)) {
-            ticket.hinhAnhSua = [...(ticket.hinhAnhSua || []), ...hinhAnhSua];
+        const files = req.files || [];
+        let hinhAnhSuaFromBody = [];
+        if (req.body && req.body.hinhAnhSua) {
+            // If client sent JSON array as string (e.g. from FormData), try to parse
+            try {
+                if (typeof req.body.hinhAnhSua === 'string') {
+                    hinhAnhSuaFromBody = JSON.parse(req.body.hinhAnhSua);
+                } else {
+                    hinhAnhSuaFromBody = req.body.hinhAnhSua;
+                }
+            } catch (e) {
+                // fallback: wrap single string into array
+                hinhAnhSuaFromBody = Array.isArray(req.body.hinhAnhSua) ? req.body.hinhAnhSua : [req.body.hinhAnhSua];
+            }
         }
 
-        // Thêm ghi chú vào tiến độ
-        ticket.moTaTienDo.push({
-            noiDung: `Đã tải lên ${hinhAnhSua.length} hình ảnh`,
-            thoiGian: new Date(),
-            nhanVienId: req.user.id
-        });
+        // Map uploaded files to public URLs served by server
+        const uploadedUrls = files.map(f => `/api/uploads/${f.filename}`);
+
+        const toAppend = [...(hinhAnhSuaFromBody || []), ...uploadedUrls];
+        if (toAppend.length > 0) {
+            // Update PhieuBaoHanh.hinhAnhSua for quick access
+            ticket.hinhAnhSua = [...(ticket.hinhAnhSua || []), ...toAppend];
+
+            // Also persist into PhieuBaoHanhAttachment collection so customer portal picks it up
+            try {
+                const PhieuBaoHanhAttachment = require('../models/phieubaohanh-attachment');
+                let attachmentDoc = await PhieuBaoHanhAttachment.findOne({ phieuBaoHanhId: ticket._id });
+                if (!attachmentDoc) {
+                    attachmentDoc = new PhieuBaoHanhAttachment({ phieuBaoHanhId: ticket._id, hinhAnhSua: [] });
+                }
+                attachmentDoc.hinhAnhSua = [...(attachmentDoc.hinhAnhSua || []), ...toAppend];
+                await attachmentDoc.save();
+            } catch (e) {
+                console.error('Failed to update PhieuBaoHanhAttachment:', e);
+            }
+
+            // Add progress note mentioning number of uploaded files (prefer files length)
+            const uploadedCount = uploadedUrls.length || (Array.isArray(hinhAnhSuaFromBody) ? hinhAnhSuaFromBody.length : 0);
+            ticket.moTaTienDo.push({
+                noiDung: `Đã tải lên ${uploadedCount} hình ảnh`,
+                thoiGian: new Date(),
+                nhanVienId: req.user.id
+            });
+        }
 
         await ticket.save();
 
