@@ -2,8 +2,8 @@ name: Scheduled DB Backup
 
 on:
   schedule:
-    # daily at 02:00 UTC
-    - cron: '0 2 * * *'
+    # daily at 19:00 Vietnam time (12:00 UTC)
+    - cron: '0 12 * * *'
   workflow_dispatch:
 
 jobs:
@@ -16,6 +16,16 @@ jobs:
       - name: Verify Docker
         run: docker --version
 
+      - name: Check MONGO_URI secret
+        env:
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+        run: |
+          if [ -z "${MONGO_URI}" ]; then
+            echo "ERROR: Repository secret MONGO_URI is not set or empty. Set it in Settings → Secrets & variables → Actions."
+            exit 1
+          fi
+          echo "MONGO_URI appears set (showing prefix): ${MONGO_URI:0:30}..."
+
       - name: Run mongodump inside mongo container
         env:
           MONGO_URI: ${{ secrets.MONGO_URI }}
@@ -23,10 +33,15 @@ jobs:
           set -eux
           ts=$(date -u +"%Y%m%d-%H%M%S")
           mkdir -p "$RUNNER_TEMP"
-          echo "Using MONGO_URI: ${MONGO_URI:0:20}..."
+          echo "Using MONGO_URI: ${MONGO_URI:0:30}..."
           docker run --rm -v "$RUNNER_TEMP":/backup -e MONGO_URI="$MONGO_URI" mongo:6.0 bash -lc \
-            "mongodump --uri=\"$MONGO_URI\" --archive=/backup/db-$ts.archive.gz --gzip"
-          echo "Backup saved to $RUNNER_TEMP/db-$ts.archive.gz"
+            "set -eux; mongodump --uri=\"$MONGO_URI\" --archive=/backup/db-$ts.archive.gz --gzip; ls -la /backup || true"
+          echo "Backup (expected) location: $RUNNER_TEMP/db-$ts.archive.gz"
+
+      - name: List runner temp files (debug)
+        run: |
+          echo "Listing files in RUNNER_TEMP: $RUNNER_TEMP"
+          ls -la "$RUNNER_TEMP" || true
 
       - name: Upload backup artifact
         uses: actions/upload-artifact@v4
